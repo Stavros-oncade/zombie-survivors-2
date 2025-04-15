@@ -29,11 +29,38 @@ export class Preloader extends Scene
 
     preload ()
     {
-        //  Load the assets for the game - Replace with your own assets
-        this.load.setPath('assets');
+        // Create loading bar
+        const width = this.cameras.main.width;
+        const height = this.cameras.main.height;
+        const loadingText = this.add.text(width / 2, height / 2 - 50, 'Loading...', {
+            font: '20px monospace',
+            color: '#ffffff'
+        });
+        loadingText.setOrigin(0.5, 0.5);
 
-        this.load.image('logo', 'logo.png');
-        this.load.image('star', 'star.png');
+        const progressBar = this.add.graphics();
+        const progressBox = this.add.graphics();
+        progressBox.fillStyle(0x222222, 0.8);
+        progressBox.fillRect(width / 2 - 160, height / 2 - 25, 320, 50);
+
+        // Loading progress events
+        this.load.on('progress', (value: number) => {
+            progressBar.clear();
+            progressBar.fillStyle(0xffffff, 1);
+            progressBar.fillRect(width / 2 - 150, height / 2 - 15, 300 * value, 30);
+        });
+
+        this.load.on('complete', () => {
+            progressBar.destroy();
+            progressBox.destroy();
+            loadingText.destroy();
+        });
+
+        // Load game assets
+        this.load.image('player', 'assets/player.png');
+        this.load.image('enemy', 'assets/zombie.png');
+        this.load.image('projectile', 'assets/plasma_bullet.png');
+        this.load.image('logo', 'assets/title.png');
     }
 
     create ()

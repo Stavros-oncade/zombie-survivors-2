@@ -1,3 +1,73 @@
+# Vampire Survivors Clone
+
+A simple Vampire Survivors-style game built with Phaser 3, React, and TypeScript.
+
+## Features
+
+- Player movement with arrow keys
+- Automatic weapon firing
+- Enemy spawning system
+- Experience and leveling system
+- Health and experience UI
+- Different enemy types
+- Basic weapon upgrades
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v14 or higher)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+4. Open your browser and navigate to `http://localhost:5173`
+
+## Controls
+
+- Arrow keys: Move the player
+- Enemies will automatically spawn and move towards the player
+- Weapons will automatically fire at the nearest enemy
+- Collect experience from defeated enemies to level up
+
+## Development
+
+### Project Structure
+
+```
+src/
+  game/
+    entities/      # Game entities (Player, Enemy)
+    weapons/       # Weapon systems
+    systems/       # Game systems (EnemySpawn, Experience)
+    ui/           # UI components
+    scenes/       # Phaser scenes
+    config/       # Game configuration
+    types/        # TypeScript types
+```
+
+### Adding New Features
+
+1. Create new entity classes in the `entities` directory
+2. Add new weapon types in the `weapons` directory
+3. Implement new game systems in the `systems` directory
+4. Update the Game scene to include new features
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
 # Phaser React TypeScript Template
 
 This is a Phaser 3 project template that uses the React framework and Vite for bundling. It includes a bridge for React to Phaser game communication, hot-reloading for quick development workflow and scripts to generate production-ready builds.

@@ -17,6 +17,11 @@ export class Boot extends Scene
 
     create ()
     {
+        // Make the background stretch to fill the screen
+        const bg = this.add.image(0, 0, 'background');
+        bg.setOrigin(0, 0);
+        bg.setDisplaySize(this.cameras.main.width, this.cameras.main.height);
+        
         this.scene.start('Preloader');
     }
 }
