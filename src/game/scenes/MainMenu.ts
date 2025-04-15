@@ -22,7 +22,10 @@ export class MainMenu extends Scene
 
     create ()
     {
-        this.background = this.add.image(512, 384, 'background');
+        // Create and stretch background to fill the screen
+        this.background = this.add.image(0, 0, 'background');
+        this.background.setOrigin(0, 0);
+        this.background.setDisplaySize(this.cameras.main.width, this.cameras.main.height);
 
         this.logo = this.add.image(512, 250, 'logo').setDepth(100);
 

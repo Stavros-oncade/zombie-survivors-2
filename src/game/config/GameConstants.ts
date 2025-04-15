@@ -6,8 +6,8 @@ export const GameConstants = {
     },
     ENEMIES: {
         SPAWN_RATE: 1000,
-        INITIAL_SPEED: 100,
-        BASE_HEALTH: 50,
+        INITIAL_SPEED: 90,
+        BASE_HEALTH: 40,
         INITIAL_SPAWN_DELAY: 2000,
         MIN_SPAWN_DELAY: 500
     },

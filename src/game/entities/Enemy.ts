@@ -25,19 +25,19 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             case EnemyType.FAST:
                 this.health = GameConstants.ENEMIES.BASE_HEALTH * 0.5;
                 this.speed = GameConstants.ENEMIES.INITIAL_SPEED * 1.5;
-                this.damage = 5;
+                this.damage = 3;
                 this.experienceValue = 15;
                 break;
             case EnemyType.TANK:
                 this.health = GameConstants.ENEMIES.BASE_HEALTH * 2;
                 this.speed = GameConstants.ENEMIES.INITIAL_SPEED * 0.7;
-                this.damage = 15;
+                this.damage = 9;
                 this.experienceValue = 25;
                 break;
             default: // BASIC
                 this.health = GameConstants.ENEMIES.BASE_HEALTH;
                 this.speed = GameConstants.ENEMIES.INITIAL_SPEED;
-                this.damage = 10;
+                this.damage = 6;
                 this.experienceValue = 20;
         }
 

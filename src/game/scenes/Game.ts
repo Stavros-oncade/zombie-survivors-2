@@ -24,13 +24,27 @@ export class Game extends Scene
 
     create()
     {
-        // Create player
-        this.player = new Player(this, 400, 300);
+        // Set the physics world bounds to be larger than the viewport
+        const worldWidth = 2048; // 4x the default width
+        const worldHeight = 1536; // 4x the default height
+        this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
+
+        // Create and stretch background to fill the world bounds
+        const background = this.add.image(0, 0, 'background');
+        background.setOrigin(0, 0);
+        background.setDisplaySize(worldWidth, worldHeight);
+        background.setDepth(-1); // Ensure background is behind everything
+
+        // Create player in the center of the world
+        this.player = new Player(this, worldWidth / 2, worldHeight / 2);
         this.add.existing(this.player);
         // Enable physics after the player is added to the scene
         this.player.enablePhysics();
 
+        // Set up camera to follow player
         this.cameras.main.setZoom(0.5);
+        this.cameras.main.startFollow(this.player);
+        this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
 
         // Create enemy group
         this.enemies = this.physics.add.group();
