@@ -11,9 +11,21 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     protected enemyType: EnemyType;
 
     constructor(scene: Phaser.Scene, x: number, y: number, type: EnemyType) {
-        super(scene, x, y, 'enemy');
+        const spriteKey = Enemy.getSpriteKeyForType(type);
+        super(scene, x, y, spriteKey);
         this.enemyType = type;
         this.initialize();
+    }
+
+    private static getSpriteKeyForType(type: EnemyType): string {
+        switch (type) {
+            case EnemyType.TANK:
+                return 'enemy_tank';
+            case EnemyType.FAST:
+                return 'enemy';
+            default:
+                return 'enemy';
+        }
     }
 
     private initialize(): void {

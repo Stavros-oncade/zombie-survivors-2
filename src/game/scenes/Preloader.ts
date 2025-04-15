@@ -59,6 +59,8 @@ export class Preloader extends Scene
         // Load game assets
         this.load.image('player', 'assets/player.png');
         this.load.image('enemy', 'assets/zombie.png');
+        this.load.image('enemy_tank', 'assets/tank.png');
+        this.load.image('enemy_fast', 'assets/enemy_fast.png');
         this.load.image('projectile', 'assets/plasma_bullet.png');
         this.load.image('logo', 'assets/title.png');
     }
