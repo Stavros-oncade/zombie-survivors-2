@@ -11,7 +11,7 @@ if (isMobile) {
     // Display a message if mobile
     rootElement.innerHTML = `
         <div class="mobile-blocker">
-            <img src="/assets/title.png" alt="Game Title" />
+            <img src="assets/title.png" alt="Game Title" />
             <h1>Mobile Not Supported</h1>
             <p>This game is designed for desktop browsers.</p>
         </div>
