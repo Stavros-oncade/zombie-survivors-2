@@ -1,6 +1,7 @@
 import { GameObjects, Scene } from 'phaser';
 
 import { EventBus } from '../EventBus';
+import { initializeOncade, getStoreCatalog, openTipUrl } from '../../oncade/OncadeIntegration';
 
 export class MainMenu extends Scene
 {
@@ -22,6 +23,15 @@ export class MainMenu extends Scene
 
     create ()
     {
+        // Initialize Oncade SDK first
+        initializeOncade().then(() => {
+            console.log('Oncade initialized from MainMenu');
+            // You could potentially enable Oncade buttons only after successful init
+        }).catch((err: Error) => {
+            console.error('Oncade failed to initialize from MainMenu:', err);
+            // Handle error - maybe disable buttons or show a message
+        });
+
         // Create and stretch background to fill the screen
         this.background = this.add.image(0, 0, 'background');
         this.background.setOrigin(0, 0);
@@ -43,6 +53,43 @@ export class MainMenu extends Scene
         .on('pointerout', () => this.playButton.setStyle({ color: '#ffffff' }))
         .on('pointerdown', () => this.changeScene());
         
+        // --- Add Oncade Buttons --- 
+        const buttonYOffset = 60; // Vertical space between buttons
+        const firstButtonY = this.playButton.y + buttonYOffset;
+
+        // Store Button (Now emits event to show React UI)
+        const storeButton = this.createButton('Store', async () => {
+            console.log('Store button clicked. Fetching catalog...');
+            try {
+                const catalog = await getStoreCatalog();
+                if (catalog && catalog.length > 0) {
+                    console.log('Catalog received, emitting show-store event:', catalog);
+                    EventBus.emit('show-store', catalog);
+                } else {
+                    console.log('No items found in catalog or failed to fetch.');
+                    // Optionally emit an event to show an empty store or error message
+                    EventBus.emit('show-store', []); // Show empty store
+                    // alert('Store catalog is empty or unavailable.'); 
+                }
+            } catch (error) {
+                console.error('Error fetching store catalog:', error);
+                // Optionally emit an event to show an error message in the UI
+                EventBus.emit('show-store', []); // Show empty store on error
+                // alert('Failed to load store catalog.');
+            }
+        });
+        storeButton.setPosition(this.cameras.main.width / 2, firstButtonY);
+        storeButton.setDepth(102);
+
+        // Tip Button
+        const tipButton = this.createButton('Tip Developer', () => {
+            console.log('Tip button clicked.');
+            openTipUrl();
+        });
+        tipButton.setPosition(this.cameras.main.width / 2, firstButtonY + buttonYOffset);
+        tipButton.setDepth(102);
+        // --- End Oncade Buttons ---
+
         // Initialize zombies
         this.initializeZombies();
 
