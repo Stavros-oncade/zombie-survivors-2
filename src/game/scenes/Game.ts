@@ -35,11 +35,20 @@ export class Game extends Scene
         background.setDisplaySize(worldWidth, worldHeight);
         background.setDepth(-1); // Ensure background is behind everything
 
-        // Create player in the center of the world
+        // --- Player and Experience System Initialization --- 
+        // 1. Create Player (without full initialization yet)
         this.player = new Player(this, worldWidth / 2, worldHeight / 2);
         this.add.existing(this.player);
-        // Enable physics after the player is added to the scene
+
+        // 2. Create ExperienceSystem, passing the player's level-up callback
+        this.experienceSystem = new ExperienceSystem(this.player, this.player.applyLevelUpEffects.bind(this.player));
+
+        // 3. Initialize Player with the ExperienceSystem
+        this.player.initialize(this.experienceSystem);
+
+        // 4. Enable Player physics after initialization
         this.player.enablePhysics();
+        // --- End Initialization --- 
 
         // Set up camera to follow player
         // this.cameras.main.setZoom(0.5); // Keep zoom disabled
@@ -50,10 +59,10 @@ export class Game extends Scene
         this.enemies = this.physics.add.group();
         this.enemies.setName('enemies');
 
-        // Initialize systems
+        // Initialize other systems (pass ExperienceSystem if needed, though not currently used by them)
         this.enemySpawnSystem = new EnemySpawnSystem(this, this.enemies);
         this.weaponSystem = new WeaponSystem(this, this.player, this.enemies);
-        this.experienceSystem = new ExperienceSystem(this.player);
+        // ExperienceSystem is already initialized
 
         // Setup input
         if (this.input.keyboard) {
@@ -71,9 +80,12 @@ export class Game extends Scene
             this.handlePlayerEnemyCollision(player as Player, enemy as Enemy);
         }, undefined, this);
 
-        // Setup experience gain
-        this.events.on('enemyKilled', (xp: number) => {
+        // Setup experience gain - Listener now updates ExperienceSystem and Player's total XP gained
+        this.events.on('enemyKilled', (xp: number) => { // Remove unused killedEnemy parameter
+            console.log(`Game Scene: enemyKilled event received with ${xp} XP`); // DEBUG
             this.experienceSystem.gainExperience(xp);
+            this.player.addXPGained(xp); // Track total XP for game over
+            this.player.incrementEnemiesKilled(); // Track killed enemies
         });
 
         // Create UI
@@ -95,7 +107,10 @@ export class Game extends Scene
         // Update enemies
         const enemyChildren = this.enemies.getChildren() as Enemy[];
         enemyChildren.forEach(enemy => {
-            enemy.moveTowardsPlayer(this.player);
+            // Check if enemy is still active before moving
+            if (enemy.active) { 
+                enemy.moveTowardsPlayer(this.player);
+            }
         });
 
         // Update UI
@@ -104,7 +119,11 @@ export class Game extends Scene
 
     private handlePlayerEnemyCollision(player: Player, enemy: Enemy)
     {
-        player.takeDamage(enemy.getDamage());
+        // Check if enemy is still active before dealing damage
+        if(enemy.active) {
+             player.takeDamage(enemy.getDamage());
+        }
+       
     }
 
     destroy()

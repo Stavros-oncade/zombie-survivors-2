@@ -93,10 +93,13 @@ export class GameUI {
         // Use coordinates relative to the view: (padding, y)
         this.experienceBar.fillRect(padding, y, 200, 20); // REMOVED camera x and y coordinates
         this.experienceBar.fillStyle(0x00ff00, 1);
+        const xpPercentage = playerStats.experienceToNextLevel > 0 ? 
+                             (playerStats.experience / playerStats.experienceToNextLevel) : 0;
+        console.log(`Drawing XP bar: ${playerStats.experience}/${playerStats.experienceToNextLevel} = ${xpPercentage * 100}%`); // DEBUG
         this.experienceBar.fillRect(
             padding,
             y, // REMOVED camera x and y coordinates
-            (playerStats.experience / playerStats.experienceToNextLevel) * 200,
+            xpPercentage * 200,
             20
         );
 
