@@ -46,3 +46,31 @@ body {
         color: rgba(255, 255, 255, 0.3);
     }
 }
+
+/* Add styles for the mobile blocker */
+.mobile-blocker {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    text-align: center;
+    background-color: #2d2d2d; /* Dark background */
+    color: #ffffff; /* Light text */
+    font-family: sans-serif;
+}
+
+.mobile-blocker h1 {
+    font-size: 2em;
+    margin-bottom: 1em;
+}
+
+.mobile-blocker p {
+    font-size: 1.2em;
+}
+
+.mobile-blocker img {
+    max-width: 90%; /* Prevent image from exceeding screen width */
+    height: auto; /* Maintain aspect ratio */
+    margin-bottom: 2em;
+}
