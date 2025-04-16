@@ -42,7 +42,7 @@ export class Game extends Scene
         this.player.enablePhysics();
 
         // Set up camera to follow player
-        this.cameras.main.setZoom(0.5);
+        // this.cameras.main.setZoom(0.5); // Keep zoom disabled
         this.cameras.main.startFollow(this.player);
         this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
 
@@ -90,7 +90,6 @@ export class Game extends Scene
         // Update weapons (automatic firing)
         this.weaponSystem.update();
 
-        // Update enemy spawning
         // enemies spawn on a timer they set internally
 
         // Update enemies
@@ -118,6 +117,8 @@ export class Game extends Scene
         this.weaponSystem.destroy();
         this.gameUI.destroy();
         
+        // Removed debug cleanup
+
         // Remove all event listeners
         this.events.removeAllListeners();
     }

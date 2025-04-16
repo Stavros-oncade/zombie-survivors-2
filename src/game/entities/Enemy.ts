@@ -31,6 +31,18 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     private initialize(): void {
         // Enable physics
         this.scene.physics.add.existing(this);
+        this.setScale(0.5); // Scale down enemy sprite
+        
+        // Adjust physics body size after scaling
+        const scaleFactor = 0.5;
+        // Important: setSize should ideally use the *original* texture dimensions
+        // If the base texture dimensions are unknown, get them before scaling or use reasonable defaults.
+        // Assuming base dimensions here, replace with actual if known.
+        const baseWidth = this.width / this.scaleX; // Estimate base width before scale was applied
+        const baseHeight = this.height / this.scaleY; // Estimate base height before scale was applied
+        this.body?.setSize(baseWidth * scaleFactor, baseHeight * scaleFactor);
+        // Optional: Center body if needed after resize
+        // this.body?.setOffset(offsetX, offsetY);
 
         // Set properties based on enemy type
         switch (this.enemyType) {

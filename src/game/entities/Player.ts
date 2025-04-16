@@ -25,6 +25,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.experienceToNextLevel = GameConstants.EXPERIENCE.BASE_XP_REQUIREMENT;
         this.movementSpeed = GameConstants.PLAYER.MOVEMENT_SPEED;
         
+        this.setScale(0.5);
+
         this.stats = {
             health: this.health,
             maxHealth: this.maxHealth,
@@ -41,6 +43,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.scene && this.scene.physics) {
             this.scene.physics.add.existing(this);
             this.setCollideWorldBounds(true);
+            const scaleFactor = 0.5;
+            this.body?.setSize(this.width * scaleFactor, this.height * scaleFactor);
         }
     }
 
