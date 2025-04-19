@@ -29,17 +29,36 @@ export class WeaponSystem {
         const activeEnemies = this.enemies.getChildren().filter(enemy => enemy.active) as Enemy[];
         
         if (activeEnemies.length > 0) {
-            console.log(`Found ${activeEnemies.length} active enemies`);
             this.weapons.forEach(weapon => {
                 weapon.fire(this.scene, this.player, activeEnemies);
             });
-        } else {
-            console.log('No active enemies found');
         }
     }
 
     public destroy(): void {
         // Clean up any resources if needed
         this.weapons = [];
+    }
+
+    public upgradeWeaponDamage(multiplier: number): void {
+        this.weapons.forEach(weapon => {
+            weapon.upgradeDamage(multiplier);
+        });
+    }
+
+    public upgradeWeaponSpeed(multiplier: number): void {
+        this.weapons.forEach(weapon => {
+            weapon.upgradeSpeed(multiplier);
+        });
+    }
+
+    public upgradeProjectileSpeed(multiplier: number): void {
+        this.weapons.forEach(weapon => {
+            weapon.upgradeProjectileSpeed(multiplier);
+        });
+    }
+
+    public getWeapons(): Weapon[] {
+        return this.weapons;
     }
 } 

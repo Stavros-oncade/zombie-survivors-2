@@ -71,13 +71,25 @@ async function openPurchaseUrl(itemId: string): Promise<void> {
 
     if (purchaseUrl) {
       console.log(`Redirecting to purchase URL for item ${itemId}: ${purchaseUrl}`);
+      
+      // Track purchase URL generation
+      trackEvent('purchase_url_generated', { itemId });
+      
       window.location.href = purchaseUrl; // Redirect the main window
     } else {
       console.warn('Could not get purchase URL. Item might be invalid or store unavailable.');
+      
+      // Track purchase URL generation failure
+      trackEvent('purchase_url_generation_failed', { itemId });
+      
       // Inform the user appropriately
     }
   } catch (error) {
     console.error(`Failed to get purchase URL for item ${itemId}:`, error);
+    
+    // Track purchase URL generation error
+    trackEvent('purchase_url_error', { itemId, error: String(error) });
+    
     // Inform the user appropriately
   }
 }
@@ -100,14 +112,26 @@ async function openTipUrl(): Promise<void> {
 
     if (tipUrl) {
       console.log(`Opening tip URL: ${tipUrl}`);
+      
+      // Track tip URL generation
+      trackEvent('tip_url_generated');
+      
       // Open tip URL in a new window/tab for better UX
       window.open(tipUrl, '_blank');
     } else {
         console.warn('Could not get tip URL.');
+        
+        // Track tip URL generation failure
+        trackEvent('tip_url_generation_failed');
+        
         // Inform the user appropriately
     }
   } catch (error) {
       console.error('Failed to get tip URL:', error);
+      
+      // Track tip URL generation error
+      trackEvent('tip_url_error', { error: String(error) });
+      
       // Inform the user appropriately
   }
 }
@@ -148,6 +172,10 @@ async function checkPurchases() {
     return transactions;
   } catch (error) {
     console.error('Failed to check transactions:', error);
+    
+    // Track transaction history retrieval error
+    trackEvent('transaction_history_error', { error: String(error) });
+    
     return null;
   }
 }
@@ -165,6 +193,10 @@ async function openLoginUrl(): Promise<void> {
      const sessionInfo = await sdk.getSessionInfo();
      if (!sessionInfo.isValid || !sessionInfo.sessionToken) {
          console.warn('Cannot get login URL: No valid session or session token available.');
+         
+         // Track login URL generation failure
+         trackEvent('login_url_generation_failed', { reason: 'invalid_session' });
+         
          // Handle appropriately - maybe initialization failed or user needs to init first
          return;
      }
@@ -179,15 +211,133 @@ async function openLoginUrl(): Promise<void> {
 
      if (loginUrl) {
        console.log(`Redirecting to login URL: ${loginUrl}`);
+       
+       // Track login URL generation
+       trackEvent('login_url_generated');
+       
        window.location.href = loginUrl; // Redirect the main window
      } else {
          console.warn('Could not get login URL.');
+         
+         // Track login URL generation failure
+         trackEvent('login_url_generation_failed', { reason: 'url_generation_failed' });
      }
    } catch (error) {
        console.error('Failed to get login URL:', error);
+       
+       // Track login URL generation error
+       trackEvent('login_url_error', { error: String(error) });
    }
- }
+}
 
+// Remote Config Functions
+
+/**
+ * Get a specific configuration value from remote config
+ * @param key The configuration key to retrieve
+ * @param defaultValue Optional default value if the key doesn't exist
+ * @returns Promise resolving to the configuration value or default
+ */
+async function getConfig<T>(key: string, defaultValue?: T): Promise<T | undefined> {
+  if (!isInitialized) {
+    console.warn('Oncade SDK not initialized. Attempting to initialize...');
+    await initializeOncade();
+  }
+  if (!isInitialized) return defaultValue;
+
+  try {
+    const value = await sdk.getConfig<T>(key, defaultValue);
+    return value;
+  } catch (error) {
+    console.error(`Failed to get config for key "${key}":`, error);
+    return defaultValue;
+  }
+}
+
+/**
+ * Get all configuration values from remote config
+ * @returns Promise resolving to all configuration values
+ */
+async function getAllConfig(): Promise<Record<string, unknown>> {
+  if (!isInitialized) {
+    console.warn('Oncade SDK not initialized. Attempting to initialize...');
+    await initializeOncade();
+  }
+  if (!isInitialized) return {};
+
+  try {
+    const config = await sdk.getAllConfig();
+    return config;
+  } catch (error) {
+    console.error('Failed to get all config:', error);
+    return {};
+  }
+}
+
+/**
+ * Subscribe to changes for a specific configuration key
+ * @param key The configuration key to subscribe to
+ * @param callback Function to call when the value changes
+ * @returns Function to unsubscribe from the changes
+ */
+function onConfigChange<T>(key: string, callback: (value: T) => void): () => void {
+  if (!isInitialized) {
+    console.warn('Oncade SDK not initialized. Attempting to initialize...');
+    initializeOncade().catch(console.error);
+    return () => {}; // Return empty unsubscribe function
+  }
+
+  try {
+    return sdk.onConfigChange<T>(key, callback);
+  } catch (error) {
+    console.error(`Failed to subscribe to config changes for key "${key}":`, error);
+    return () => {}; // Return empty unsubscribe function
+  }
+}
+
+// Telemetry Functions
+
+/**
+ * Track an event with optional payload
+ * @param eventName Name of the event to track
+ * @param payload Optional data to include with the event
+ * @param options Optional options for tracking
+ */
+function trackEvent<EventPayload extends Record<string, unknown>>(
+  eventName: string, 
+  payload?: EventPayload,
+  options?: { flushImmediately?: boolean }
+): void {
+  if (!isInitialized) {
+    console.warn('Oncade SDK not initialized. Attempting to initialize...');
+    initializeOncade().catch(console.error);
+    return;
+  }
+
+  try {
+    sdk.track(eventName, payload || {}, options);
+  } catch (error) {
+    console.error(`Failed to track event "${eventName}":`, error);
+  }
+}
+
+/**
+ * Flush telemetry data to the server
+ * @returns Promise resolving when telemetry is flushed
+ */
+async function flushTelemetry(): Promise<void> {
+  if (!isInitialized) {
+    console.warn('Oncade SDK not initialized. Attempting to initialize...');
+    await initializeOncade();
+  }
+  if (!isInitialized) return;
+
+  try {
+    await sdk.flushTelemetry();
+  } catch (error) {
+    console.error('Failed to flush telemetry:', error);
+  }
+}
 
 // Export functions for use in other parts of the game
 export {
@@ -197,5 +347,10 @@ export {
   openTipUrl,
   checkPurchases,
   openLoginUrl, // Optional login function
+  getConfig,
+  getAllConfig,
+  onConfigChange,
+  trackEvent,
+  flushTelemetry,
   sdk as oncadeSDK // Export sdk instance if needed elsewhere
 }; 

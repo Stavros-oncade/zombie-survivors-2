@@ -6,6 +6,14 @@ export interface PlayerStats {
     experienceToNextLevel: number;
 }
 
+export interface UpgradeStats {
+    health: number;
+    speed: number;
+    weaponDamage: number;
+    weaponSpeed: number;
+    projectileSpeed: number;
+}
+
 export interface WeaponConfig {
     damage: number;
     attackSpeed: number;
@@ -30,4 +38,12 @@ export enum EnemyType {
     BASIC = 'basic',
     FAST = 'fast',
     TANK = 'tank'
+}
+
+export enum PickupType {
+    HEALTH = 'health',
+    SPEED = 'speed',
+    DAMAGE = 'damage',
+    EXPERIENCE = 'experience',
+    BOMB = 'bomb'
 } 

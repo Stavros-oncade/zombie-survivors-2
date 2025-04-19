@@ -63,6 +63,11 @@ export class Preloader extends Scene
         this.load.image('enemy_fast', 'assets/enemy_fast.png');
         this.load.image('projectile', 'assets/plasma_bullet.png');
         this.load.image('logo', 'assets/title.png');
+        this.load.image('pickup_health', 'assets/pickup_health.png');
+        this.load.image('pickup_xp', 'assets/pickup_xp.png');
+        this.load.image('pickup_dmg', 'assets/pickup_dmg.png');
+        this.load.image('pickup_bomb', 'assets/pickup_bomb.png');
+        this.load.image('pickup_speed', 'assets/pickup_speed.png');
     }
 
     create ()

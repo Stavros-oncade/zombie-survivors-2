@@ -46,21 +46,26 @@ export class Weapon {
 
         this.lastFired = currentTime;
 
-        // Create projectile and add to scene
-        const projectile = scene.add.sprite(
-            player.x,
-            player.y,
-            'projectile'
-        );
-        
-        // Enable physics after adding to scene
-        scene.physics.add.existing(projectile);
-
         // Calculate angle to closest enemy
         const angle = Phaser.Math.Angle.Between(
             player.x, player.y,
             closestEnemy.x, closestEnemy.y
         );
+
+        // Calculate spawn position 1% along the vector towards enemy
+        const spawnDistance = 10; // 1% of the way
+        const spawnX = player.x + (closestEnemy.x - player.x) * (spawnDistance / 100);
+        const spawnY = player.y + (closestEnemy.y - player.y) * (spawnDistance / 100);
+
+        // Create projectile and add to scene
+        const projectile = scene.add.sprite(
+            spawnX,
+            spawnY,
+            'projectile'
+        );
+        
+        // Enable physics after adding to scene
+        scene.physics.add.existing(projectile);
 
         // Set projectile properties
         projectile.setScale(0.5); // Make projectile smaller
@@ -81,7 +86,7 @@ export class Weapon {
         });
 
         // Destroy projectile after 2 seconds
-        scene.time.delayedCall(2000, () => {
+        scene.time.delayedCall(4000, () => {
             if (projectile && projectile.active) {
                 projectile.destroy();
             }
@@ -92,5 +97,29 @@ export class Weapon {
         this.level++;
         this.damage *= 1.2;
         this.attackSpeed *= 1.1;
+    }
+
+    public upgradeDamage(multiplier: number): void {
+        this.damage *= multiplier;
+    }
+
+    public upgradeSpeed(multiplier: number): void {
+        this.attackSpeed *= multiplier;
+    }
+
+    public upgradeProjectileSpeed(multiplier: number): void {
+        this.projectileSpeed *= multiplier;
+    }
+
+    public getDamage(): number {
+        return this.damage;
+    }
+
+    public getAttackSpeed(): number {
+        return this.attackSpeed;
+    }
+
+    public getProjectileSpeed(): number {
+        return this.projectileSpeed;
     }
 } 

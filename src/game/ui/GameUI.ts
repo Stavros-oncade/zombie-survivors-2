@@ -95,7 +95,6 @@ export class GameUI {
         this.experienceBar.fillStyle(0x00ff00, 1);
         const xpPercentage = playerStats.experienceToNextLevel > 0 ? 
                              (playerStats.experience / playerStats.experienceToNextLevel) : 0;
-        console.log(`Drawing XP bar: ${playerStats.experience}/${playerStats.experienceToNextLevel} = ${xpPercentage * 100}%`); // DEBUG
         this.experienceBar.fillRect(
             padding,
             y, // REMOVED camera x and y coordinates
@@ -116,5 +115,10 @@ export class GameUI {
         this.experienceBar.destroy();
         this.levelText.destroy();
         this.timerText.destroy();
+    }
+
+    // Getter for gameTime to make it accessible from outside
+    public getGameTime(): number {
+        return this.gameTime;
     }
 } 
