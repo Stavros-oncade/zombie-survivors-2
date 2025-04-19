@@ -12,6 +12,8 @@ import { UpgradeSystem } from "../systems/UpgradeSystem";
 import { Upgrade, PickupType } from "../types/GameTypes";
 import { PickupAssetGenerator } from "../utils/GeneratePickupAssets";
 import { GameConstants } from "../config/GameConstants";
+import { ExplosionConfig } from "../config/ExplosionConfig";
+import { GameConfig } from "../config/GameConfig";
 
 export class Game extends Scene {
     private player!: Player;
@@ -32,6 +34,8 @@ export class Game extends Scene {
     private collectedPickups: Set<Pickup> = new Set(); // Track pickups that have been collected
     private initialTouchPoint: Phaser.Math.Vector2 | null = null;
     private currentTouchPoint: Phaser.Math.Vector2 | null = null;
+    private touchIndicator: Phaser.GameObjects.Sprite | null = null;
+    private centerDot: Phaser.GameObjects.Graphics | null = null;
 
     constructor() {
         super({ key: "Game" });
@@ -39,15 +43,15 @@ export class Game extends Scene {
 
     create() {
         // Set the physics world bounds to be larger than the viewport
-        const worldWidth = 2048; // 4x the default width
-        const worldHeight = 1536; // 4x the default height
+        const worldWidth = GameConfig.WORLD.WIDTH;
+        const worldHeight = GameConfig.WORLD.HEIGHT;
         this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
 
         // Create and stretch background to fill the world bounds
         const background = this.add.image(0, 0, "background");
         background.setOrigin(0, 0);
         background.setDisplaySize(worldWidth, worldHeight);
-        background.setDepth(-1); // Ensure background is behind everything
+        background.setDepth(GameConfig.BACKGROUND.DEPTH);
 
         // --- Player and Experience System Initialization ---
         // 1. Create Player (without full initialization yet)
@@ -110,19 +114,58 @@ export class Game extends Scene {
 
         // Setup touch input
         this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            console.log('Pointer down at:', pointer.x, pointer.y);
             this.initialTouchPoint = new Phaser.Math.Vector2(pointer.x, pointer.y);
             this.currentTouchPoint = new Phaser.Math.Vector2(pointer.x, pointer.y);
+            
+            // Create touch indicator if it doesn't exist
+            if (!this.touchIndicator) {
+                // Create a circle texture for the indicator
+                const graphics = this.add.graphics();
+                graphics.fillStyle(0x4a4a4a, 1);
+                graphics.fillCircle(32, 32, 32);
+                graphics.lineStyle(3, 0x272727, 1);
+                graphics.strokeCircle(32, 32, 32);
+                
+                graphics.generateTexture('touchIndicator', 64, 64);
+                graphics.destroy();
+
+                // Create the sprite
+                this.touchIndicator = this.add.sprite(0, 0, 'touchIndicator');
+                this.touchIndicator.setDepth(9999);
+                this.touchIndicator.setScrollFactor(0);
+                console.log('Created new touch indicator');
+
+                // Create the center dot
+                this.centerDot = this.add.graphics();
+                this.centerDot.setDepth(10000); // Above the indicator
+                this.centerDot.setScrollFactor(0);
+            }
+            
+            // Update the touch indicator position
+            this.updateTouchIndicator();
         });
 
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
             if (pointer.isDown) {
+                console.log('Pointer move at:', pointer.x, pointer.y);
                 this.currentTouchPoint = new Phaser.Math.Vector2(pointer.x, pointer.y);
+                this.updateCenterDot();
             }
         });
 
         this.input.on('pointerup', () => {
+            console.log('Pointer up');
             this.initialTouchPoint = null;
             this.currentTouchPoint = null;
+            
+            // Hide the touch indicator and center dot
+            if (this.touchIndicator) {
+                this.touchIndicator.setVisible(false);
+            }
+            if (this.centerDot) {
+                this.centerDot.clear();
+            }
         });
 
         // Create pause button in the top-right corner
@@ -245,7 +288,7 @@ export class Game extends Scene {
     private handlePlayerEnemyCollision(player: Player, enemy: Enemy) {
         // Check if enemy is still active before dealing damage
         if (enemy.active) {
-            player.takeDamage(enemy.getDamage());
+            player.takeDamage(enemy.getDamage(), enemy);
         }
     }
 
@@ -418,7 +461,7 @@ export class Game extends Scene {
                 color: "#00ff00",
                 fontSize: "24px",
                 duration: 2000,
-                position: { x: this.player.x, y: this.player.y - 50 },
+                position: { x: this.player.x, y: this.player.y - 20 },
                 glowColor: 0x00ff00,
                 glowIntensity: 4,
                 scale: { from: 0.8, to: 1.2 },
@@ -461,35 +504,41 @@ export class Game extends Scene {
         const currentWeapon = weapons[0];
         const baseDamage = currentWeapon ? currentWeapon.getDamage() : GameConstants.WEAPONS.BASIC_DAMAGE;
         
-        // Calculate explosion damage (10x weapon damage)
-        const explosionDamage = baseDamage * 10;
+        // Calculate explosion damage
+        const explosionDamage = baseDamage * ExplosionConfig.DAMAGE_MULTIPLIER;
         
-        // Create explosion radius (in pixels)
-        const explosionRadius = 250;
+        // Create explosion radius
+        const explosionRadius = ExplosionConfig.RADIUS;
         
         // Create explosion visual effect
         const explosion = this.add.graphics();
-        explosion.fillStyle(0xff0000, 0.7);
+        explosion.setDepth(ExplosionConfig.VISUAL.MAIN.DEPTH);
+        explosion.fillStyle(ExplosionConfig.VISUAL.MAIN.OUTER_COLOR, ExplosionConfig.VISUAL.MAIN.OUTER_ALPHA);
         explosion.fillCircle(x, y, explosionRadius);
         
         // Add a white border
-        explosion.lineStyle(4, 0xffffff, 0.8);
+        explosion.lineStyle(
+            ExplosionConfig.VISUAL.MAIN.BORDER_WIDTH,
+            ExplosionConfig.VISUAL.MAIN.BORDER_COLOR,
+            ExplosionConfig.VISUAL.MAIN.BORDER_ALPHA
+        );
         explosion.strokeCircle(x, y, explosionRadius);
         
         // Add a smaller inner circle
-        explosion.fillStyle(0xffff00, 0.9);
-        explosion.fillCircle(x, y, explosionRadius * 0.5);
+        explosion.fillStyle(ExplosionConfig.VISUAL.MAIN.INNER_COLOR, ExplosionConfig.VISUAL.MAIN.INNER_ALPHA);
+        explosion.fillCircle(x, y, explosionRadius * ExplosionConfig.VISUAL.MAIN.INNER_RADIUS_MULTIPLIER);
         
         // Add explosion particles
-        for (let i = 0; i < 20; i++) {
-            const angle = (i / 20) * Math.PI * 2;
+        for (let i = 0; i < ExplosionConfig.VISUAL.PARTICLES.COUNT; i++) {
+            const angle = (i / ExplosionConfig.VISUAL.PARTICLES.COUNT) * Math.PI * 2;
             const distance = explosionRadius * (0.5 + Math.random() * 0.5);
             const particleX = x + Math.cos(angle) * distance;
             const particleY = y + Math.sin(angle) * distance;
             
             const particle = this.add.graphics();
-            particle.fillStyle(0xff5500, 0.8);
-            particle.fillCircle(0, 0, 5);
+            particle.setDepth(ExplosionConfig.VISUAL.PARTICLES.DEPTH);
+            particle.fillStyle(ExplosionConfig.VISUAL.PARTICLES.COLOR, ExplosionConfig.VISUAL.PARTICLES.ALPHA);
+            particle.fillCircle(0, 0, ExplosionConfig.VISUAL.PARTICLES.SIZE);
             
             // Position the particle graphics at the calculated position
             particle.x = particleX;
@@ -499,8 +548,8 @@ export class Game extends Scene {
             this.tweens.add({
                 targets: particle,
                 alpha: 0,
-                scale: 2,
-                duration: 500,
+                scale: ExplosionConfig.VISUAL.PARTICLES.ANIMATION.SCALE,
+                duration: ExplosionConfig.VISUAL.PARTICLES.ANIMATION.DURATION,
                 onComplete: () => {
                     particle.destroy();
                 }
@@ -516,16 +565,16 @@ export class Game extends Scene {
             },
             to: {
                 alpha: 0,
-                scale: 1.5
+                scale: ExplosionConfig.VISUAL.ANIMATION.SCALE
             },
-            duration: 500,
+            duration: ExplosionConfig.VISUAL.ANIMATION.DURATION,
             onComplete: () => {
                 explosion.destroy();
             }
         });
         
-        // Calculate knockback radius (1.5 times the explosion radius)
-        const knockbackRadius = explosionRadius * 1.5;
+        // Calculate knockback radius
+        const knockbackRadius = explosionRadius * ExplosionConfig.KNOCKBACK_RADIUS_MULTIPLIER;
         
         // Damage and apply knockback to all enemies
         const enemies = this.enemies.getChildren() as Enemy[];
@@ -537,7 +586,7 @@ export class Game extends Scene {
             // Apply knockback to enemies within the extended radius
             if (distance <= knockbackRadius) {
                 // Calculate knockback force (stronger for enemies closer to the explosion)
-                const knockbackForce = 900 * (1 - (distance / knockbackRadius));
+                const knockbackForce = ExplosionConfig.KNOCKBACK_FORCE * (1 - (distance / knockbackRadius));
                 const angle = Phaser.Math.Angle.Between(x, y, enemy.x, enemy.y);
                 
                 // Use the new applyKnockback method
@@ -554,6 +603,40 @@ export class Game extends Scene {
     // Add a method to clean up the collected pickups set when a pickup is destroyed
     public removeFromCollectedPickups(pickup: Pickup): void {
         this.collectedPickups.delete(pickup);
+    }
+
+    private updateTouchIndicator(): void {
+        if (!this.touchIndicator || !this.initialTouchPoint) return;
+
+        // Update position and make visible
+        this.touchIndicator.setPosition(this.initialTouchPoint.x, this.initialTouchPoint.y);
+        this.touchIndicator.setVisible(true);
+        
+        // Update center dot position
+        this.updateCenterDot();
+    }
+
+    private updateCenterDot(): void {
+        if (!this.centerDot || !this.initialTouchPoint || !this.currentTouchPoint) return;
+
+        // Calculate the vector from initial to current touch
+        const vector = new Phaser.Math.Vector2(
+            this.currentTouchPoint.x - this.initialTouchPoint.x,
+            this.currentTouchPoint.y - this.initialTouchPoint.y
+        );
+
+        // Normalize the vector and scale it to move the dot
+        vector.normalize();
+        vector.scale(20); // Move the dot 20 pixels in the direction of movement
+
+        // Clear and redraw the center dot
+        this.centerDot.clear();
+        this.centerDot.fillStyle(0x272727, 1);
+        this.centerDot.fillCircle(
+            this.initialTouchPoint.x + vector.x,
+            this.initialTouchPoint.y + vector.y,
+            5
+        );
     }
 
     destroy() {

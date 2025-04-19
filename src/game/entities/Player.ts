@@ -3,6 +3,7 @@ import { PlayerStats } from '../types/GameTypes';
 import { ExperienceSystem } from '../systems/ExperienceSystem';
 import { trackEvent } from '../../oncade/OncadeIntegration';
 import { Game } from '../scenes/Game';
+import { Enemy } from './Enemy';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
     private health: number;
@@ -16,6 +17,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     private healthRegenTimer: Phaser.Time.TimerEvent | null = null;
     private healthRegenAmount: number = 0;
     private healthRegenInterval: number = 0;
+    private lastDamageSource: Enemy | null = null;
+    private immunityTimer: Phaser.Time.TimerEvent | null = null;
+    private readonly IMMUNITY_DURATION: number = 100; // 100ms immunity
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, 'player');
@@ -64,8 +68,27 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         }
     }
 
-    public takeDamage(amount: number): void {
+    public takeDamage(amount: number, source: Enemy): void {
+        // Check if the player is immune to this damage source
+        if (this.lastDamageSource === source && this.immunityTimer && !this.immunityTimer.getRemaining()) {
+            return; // Player is still immune to this source
+        }
+
         this.health = Math.max(0, this.health - amount);
+        this.lastDamageSource = source;
+        
+        // Clear any existing immunity timer
+        if (this.immunityTimer) {
+            this.immunityTimer.destroy();
+        }
+
+        // Create new immunity timer
+        this.immunityTimer = this.scene.time.addEvent({
+            delay: this.IMMUNITY_DURATION,
+            callback: () => {
+                this.lastDamageSource = null;
+            }
+        });
         
         if (this.health <= 0) {
             this.die();
@@ -260,6 +283,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         if (this.healthRegenTimer) {
             this.healthRegenTimer.destroy();
             this.healthRegenTimer = null;
+        }
+
+        // Clean up immunity timer
+        if (this.immunityTimer) {
+            this.immunityTimer.destroy();
+            this.immunityTimer = null;
         }
         
         super.destroy(fromScene);

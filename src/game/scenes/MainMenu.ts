@@ -3,6 +3,7 @@ import { GameObjects, Scene } from 'phaser';
 import { EventBus } from '../EventBus';
 import { initializeOncade, getStoreCatalog, openTipUrl, getAllConfig, getConfig } from '../../oncade/OncadeIntegration';
 import { ScreenManager } from '../utils/ScreenManager';
+import { GameConfig } from '../config/GameConfig';
 
 export class MainMenu extends Scene
 {
@@ -40,7 +41,7 @@ export class MainMenu extends Scene
         // Create and stretch background to fill the screen
         this.background = this.add.image(0, 0, 'background');
         this.background.setOrigin(0, 0);
-        this.background.setDisplaySize(this.cameras.main.width, this.cameras.main.height);
+        this.background.setDisplaySize(GameConfig.WORLD.WIDTH, GameConfig.WORLD.HEIGHT);
 
         // Add version text in lower right corner
         try {

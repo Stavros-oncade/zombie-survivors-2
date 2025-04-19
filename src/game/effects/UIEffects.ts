@@ -328,11 +328,14 @@ export class UIEffects {
             return;
         }
 
+        const width = this.scene.cameras.main.width;
+        const height = this.scene.cameras.main.height;
+
         // Create spawn state change text
         this.spawnStateChangeText = this.scene.add
             .text(
-                (this.scene.game.config.width as number) / 2,
-                (this.scene.game.config.height as number) / 2 + 150, // Below other effects if they're showing
+                width / 2,
+                4 * height / 5, // Below other effects if they're showing
                 data.formattedText,
                 {
                     fontSize: data.displayConfig.fontSize,
