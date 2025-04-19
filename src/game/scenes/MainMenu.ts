@@ -43,6 +43,10 @@ export class MainMenu extends Scene
         this.background.setOrigin(0, 0);
         this.background.setDisplaySize(GameConfig.WORLD.WIDTH, GameConfig.WORLD.HEIGHT);
 
+        // Get the original dimensions of the logo
+        const originalHeight = this.textures.get('logo').getSourceImage().height;
+        const originalWidth = this.textures.get('logo').getSourceImage().width;
+        
         // Add version text in lower right corner
         try {
             const config = await getAllConfig();
@@ -54,19 +58,32 @@ export class MainMenu extends Scene
                 stroke: '#000000',
                 strokeThickness: 4
             }).setOrigin(1, 1).setDepth(102);
+
+        
             
             // Fetch and display Message of the Day if available
             const motd = await getConfig<string>('motd');
+            console.log('MOTD:', motd);
             if (motd) {
-                this.motdText = this.add.text(this.cameras.main.width / 2, 100, motd, {
+                this.motdText = this.add.text(this.cameras.main.width / 2, originalHeight, motd, {
                     fontFamily: 'Arial',
-                    fontSize: '20px',
+                    fontSize: '24px',
                     color: '#ffffff',
-                    stroke: '#000000',
-                    strokeThickness: 4,
+                    stroke: '#aaaa00',
+                    strokeThickness: 2,
                     align: 'center',
                     wordWrap: { width: this.cameras.main.width * 0.8 }
                 }).setOrigin(0.5, 0).setDepth(102);
+
+                // Add floating animation
+                this.tweens.add({
+                    targets: this.motdText,
+                    y: originalHeight - 5,
+                    duration: 1500,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut'
+                });
             }
         } catch (error) {
             console.error('Failed to get config:', error);
@@ -82,11 +99,7 @@ export class MainMenu extends Scene
 
         // Position and scale the logo at the top center of the screen
         this.logo = this.add.image(this.cameras.main.width / 2, 0, 'logo').setDepth(100);
-        
-        // Get the original dimensions of the logo
-        const originalHeight = this.textures.get('logo').getSourceImage().height;
-        const originalWidth = this.textures.get('logo').getSourceImage().width;
-        
+                
         // Calculate the maximum height for the logo (20% of screen height)
         const maxLogoHeight = this.cameras.main.height * .66;
         const maxLogoWidth = this.cameras.main.width;

@@ -31,7 +31,7 @@ export const ExplosionConfig = {
             COLOR: 0xff5500,
             ALPHA: 0.8,
             SIZE: 5,
-            DEPTH: -1,
+            DEPTH: 0,
             ANIMATION: {
                 DURATION: 500,
                 SCALE: 2
