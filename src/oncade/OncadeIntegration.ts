@@ -1,7 +1,7 @@
 import { OncadeSDK, PurchaseItem } from '@oncade/sdk';
 
-const ONCADE_API_KEY = 'api_test_63b897402a08ca75268e7a0e052efec5dd1b787e197350b785581ac8111a7bb8';
-const ONCADE_GAME_ID = 'zombie-survivors-test-22eyd';
+const ONCADE_API_KEY = 'api_live_4b8b1235e13fd0cf4983d46496c4930b54915931e0ee0638f055c0390ced985a';
+const ONCADE_GAME_ID = 'zombie-survivors-v2-cm511';
 
 // Create a new SDK instance
 const sdk = new OncadeSDK({

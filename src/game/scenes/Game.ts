@@ -14,6 +14,7 @@ import { PickupAssetGenerator } from "../utils/GeneratePickupAssets";
 import { GameConstants } from "../config/GameConstants";
 import { ExplosionConfig } from "../config/ExplosionConfig";
 import { GameConfig } from "../config/GameConfig";
+import { BoostTimerUI } from "../ui/BoostTimerUI";
 
 export class Game extends Scene {
     private player!: Player;
@@ -26,11 +27,14 @@ export class Game extends Scene {
     private wasdKeys!: { [key: string]: Phaser.Input.Keyboard.Key };
     private gameUI!: GameUI;
     private uiEffects!: UIEffects;
+    private boostTimerUI!: BoostTimerUI;
     private playTime: number = 0; // Track play time in seconds
     private pauseButton!: Phaser.GameObjects.Text;
     private escapeKey!: Phaser.Input.Keyboard.Key;
     private speedBoostTimer: Phaser.Time.TimerEvent | null = null;
     private damageBoostTimer: Phaser.Time.TimerEvent | null = null;
+    private originalSpeed: number | null = null; // Track original speed
+    private originalDamage: number | null = null; // Track original damage
     private collectedPickups: Set<Pickup> = new Set(); // Track pickups that have been collected
     private initialTouchPoint: Phaser.Math.Vector2 | null = null;
     private currentTouchPoint: Phaser.Math.Vector2 | null = null;
@@ -95,6 +99,9 @@ export class Game extends Scene {
         // Initialize UI Effects
         this.uiEffects = new UIEffects(this);
         this.uiEffects.create();
+
+        // Initialize Boost Timer UI
+        this.boostTimerUI = new BoostTimerUI(this);
 
         // Setup input
         if (this.input.keyboard) {
@@ -445,43 +452,62 @@ export class Game extends Scene {
     }
 
     private applySpeedBoost(multiplier: number): void {
+        // Store original speed if not already stored
+        if (this.originalSpeed === null) {
+            this.originalSpeed = this.player.getMovementSpeed();
+        }
+
         // Cancel existing speed boost timer if it exists
         if (this.speedBoostTimer) {
             this.speedBoostTimer.destroy();
         }
 
-        // Apply speed boost
-        const originalSpeed = this.player.getMovementSpeed();
-        this.player.setMovementSpeed(originalSpeed * multiplier);
+        // Apply speed boost based on original speed, not current speed
+        if (this.originalSpeed !== null) {
+            this.player.setMovementSpeed(this.originalSpeed * multiplier);
+        }
+
+        // Show the boost timer UI
+        this.boostTimerUI.showSpeedBoost(5000);
 
         // Create timer to revert speed boost after 5 seconds
         this.speedBoostTimer = this.time.delayedCall(5000, () => {
-            this.player.setMovementSpeed(originalSpeed);
-            this.uiEffects.showStateText("Speed Boost Ended", {
-                color: "#00ff00",
-                fontSize: "24px",
-                duration: 2000,
-                position: { x: this.player.x, y: this.player.y - 20 },
-                glowColor: 0x00ff00,
-                glowIntensity: 4,
-                scale: { from: 0.8, to: 1.2 },
-                particles: true
-            });
+            if (this.originalSpeed !== null) {
+                this.player.setMovementSpeed(this.originalSpeed);
+            }
+            this.originalSpeed = null; // Reset original speed tracking
+            this.showFloatingText("Speed Boost Ended", this.player.x, this.player.y - 20, 0x00ff00);
         });
     }
 
     private applyDamageBoost(multiplier: number): void {
+        // Store original damage if not already stored
+        if (this.originalDamage === null) {
+            // Get the current weapon damage from the first weapon
+            const weapons = this.weaponSystem.getWeapons();
+            if (weapons.length > 0) {
+                this.originalDamage = weapons[0].getDamage();
+            } else {
+                // Fallback to basic damage if no weapons
+                this.originalDamage = GameConstants.WEAPONS.BASIC_DAMAGE;
+            }
+        }
+
         // Cancel existing damage boost timer if it exists
         if (this.damageBoostTimer) {
             this.damageBoostTimer.destroy();
         }
 
-        // Apply damage boost to weapon system
+        // Apply damage boost based on original damage, not current damage
         this.weaponSystem.upgradeWeaponDamage(multiplier);
+
+        // Show the boost timer UI
+        this.boostTimerUI.showDamageBoost(5000);
 
         // Create timer to revert damage boost after 5 seconds
         this.damageBoostTimer = this.time.delayedCall(5000, () => {
             this.weaponSystem.upgradeWeaponDamage(1 / multiplier);
+            this.originalDamage = null; // Reset original damage tracking
             this.showFloatingText(
                 "Damage Boost Ended",
                 this.player.x,
@@ -643,6 +669,11 @@ export class Game extends Scene {
         // Clean up UI Effects
         if (this.uiEffects) {
             this.uiEffects.destroy();
+        }
+
+        // Clean up Boost Timer UI
+        if (this.boostTimerUI) {
+            this.boostTimerUI.destroy();
         }
 
         // Stop all sounds
