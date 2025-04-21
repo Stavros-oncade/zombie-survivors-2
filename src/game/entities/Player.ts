@@ -216,7 +216,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       const previousHealth = this.health;
         this.health = Math.min(this.maxHealth, this.health + amount);
         if (this.health !== previousHealth) {
-          console.log(`Player healed ${amount} HP. New health: ${this.health}`);
+          //console.log(`Player healed ${amount} HP. New health: ${this.health}`);
         }
         this.stats.health = this.health;
     }

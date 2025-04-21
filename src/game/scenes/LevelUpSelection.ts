@@ -266,7 +266,6 @@ export class LevelUpSelection extends Scene {
         // Highlight the selected option
         const selectedIndex = this.upgradeOptions.findIndex((container) => {
             const bg = container.getAt(0) as GameObjects.Rectangle;
-            console.log(bg);
             return (
                 bg && bg.input && bg.input.hitAreaCallback(bg.input.hitArea, 0, 0, bg)
             );

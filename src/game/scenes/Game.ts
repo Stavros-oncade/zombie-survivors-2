@@ -121,7 +121,6 @@ export class Game extends Scene {
 
         // Setup touch input
         this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            console.log('Pointer down at:', pointer.x, pointer.y);
             this.initialTouchPoint = new Phaser.Math.Vector2(pointer.x, pointer.y);
             this.currentTouchPoint = new Phaser.Math.Vector2(pointer.x, pointer.y);
             
@@ -141,7 +140,6 @@ export class Game extends Scene {
                 this.touchIndicator = this.add.sprite(0, 0, 'touchIndicator');
                 this.touchIndicator.setDepth(9999);
                 this.touchIndicator.setScrollFactor(0);
-                console.log('Created new touch indicator');
 
                 // Create the center dot
                 this.centerDot = this.add.graphics();
@@ -155,14 +153,12 @@ export class Game extends Scene {
 
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
             if (pointer.isDown) {
-                console.log('Pointer move at:', pointer.x, pointer.y);
                 this.currentTouchPoint = new Phaser.Math.Vector2(pointer.x, pointer.y);
                 this.updateCenterDot();
             }
         });
 
         this.input.on('pointerup', () => {
-            console.log('Pointer up');
             this.initialTouchPoint = null;
             this.currentTouchPoint = null;
             
@@ -212,7 +208,6 @@ export class Game extends Scene {
 
         // Setup experience gain - Listener now updates ExperienceSystem and Player's total XP gained
         this.events.on("enemyKilled", (xp: number) => {
-            console.log(`Game Scene: enemyKilled event received with ${xp} XP`); // DEBUG
             this.experienceSystem.gainExperience(xp);
             this.player.addXPGained(xp); // Track total XP for game over
             this.player.incrementEnemiesKilled(); // Track killed enemies

@@ -41,7 +41,7 @@ export class ScreenManager {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        console.log(`Layout selected: ${Layout[currentLayout]} ${width} x ${height}`);
+        //console.log(`Layout selected: ${Layout[currentLayout]} ${width} x ${height}`);
 
         // Set game size to match screen dimensions
         this.scale.setGameSize(width, height);
@@ -58,12 +58,12 @@ export class ScreenManager {
             if (newWidth < width) {
                 // Set the game size to use the full height and calculated width
                 this.scale.setGameSize(newWidth, height);
-                console.log(`Adjusted portrait mode width to ${newWidth} to maintain aspect ratio at full height`);
+                // console.log(`Adjusted portrait mode width to ${newWidth} to maintain aspect ratio at full height`);
             } else {
                 // If the calculated width is greater than the screen width, we need to adjust the height
                 // In portrait mode, we want to take up the full height regardless of aspect ratio
                 this.scale.setGameSize(width, height);
-                console.log(`Using full height in portrait mode: ${height}`);
+                // console.log(`Using full height in portrait mode: ${height}`);
             }
         }
 
@@ -76,7 +76,6 @@ export class ScreenManager {
         window.addEventListener('resize', () => {
             const newLayout = this.detectLayout();
             if (newLayout !== currentLayout) {
-                console.log(`Switching layout: ${Layout[currentLayout]} → ${Layout[newLayout]}`);
                 currentLayout = newLayout;
                 const width = window.innerWidth;
                 const height = window.innerHeight;
@@ -90,11 +89,9 @@ export class ScreenManager {
                         
                         if (newWidth < width) {
                             this.scale.setGameSize(newWidth, height);
-                            console.log(`Adjusted portrait mode width to ${newWidth} to maintain aspect ratio at full height`);
                         } else {
                             // In portrait mode, we want to take up the full height regardless of aspect ratio
                             this.scale.setGameSize(width, height);
-                            console.log(`Using full height in portrait mode: ${height}`);
                         }
                     }
                     

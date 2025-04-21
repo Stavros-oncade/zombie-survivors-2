@@ -150,7 +150,7 @@ export class EnemySpawnSystem {
         } else {
             this.spawnState = 'normal';
         }
-        console.log(`[SpawnState] → ${this.spawnState}`);
+        // console.log(`[SpawnState] → ${this.spawnState}`);
         
         // Get the display configuration for the new state
         const displayConfig = this.getWaveStateDisplayConfig(this.spawnState);
@@ -221,9 +221,9 @@ export class EnemySpawnSystem {
         const enemy = new Enemy(this.scene, x, y, type);
         this.scene.add.existing(enemy);
         this.enemies.add(enemy);
-        console.log(
-            `[${this.spawnState}] Spawned ${type} @ (${x},${y}) — total: ${this.enemies.getLength()}`
-        );
+        // console.log(
+        //     `[${this.spawnState}] Spawned ${type} @ (${x},${y}) — total: ${this.enemies.getLength()}`
+        // );
     }
 
     private getRandomEnemyType(cfg: SpawnStateConfig): EnemyType {

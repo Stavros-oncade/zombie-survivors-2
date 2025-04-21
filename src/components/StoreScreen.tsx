@@ -29,7 +29,6 @@ const StoreScreen: React.FC<StoreScreenProps> = ({ items }) => {
   };
 
   const handleClose = () => {
-    console.log('Closing store screen via EventBus');
     EventBus.emit('hide-store');
   };
 

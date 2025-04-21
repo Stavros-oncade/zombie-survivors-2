@@ -31,7 +31,6 @@ export class MainMenu extends Scene
     {
         // Initialize Oncade SDK first
         await initializeOncade().then(() => {
-            console.log('Oncade initialized from MainMenu');
             // You could potentially enable Oncade buttons only after successful init
         }).catch((err: Error) => {
             console.error('Oncade failed to initialize from MainMenu:', err);
@@ -112,7 +111,6 @@ export class MainMenu extends Scene
         
         // Apply the scale to the logo
         this.logo.setScale(scaleFactor);
-        console.log('Logo scale factor:', scaleFactor);
         
         // Set the origin to the top center of the logo
         this.logo.setOrigin(0.5, 0);
@@ -145,14 +143,11 @@ export class MainMenu extends Scene
         // --- Add Oncade Buttons --- 
         // Store Button (Now emits event to show React UI)
         const storeButton = this.createButton('Store', async () => {
-            console.log('Store button clicked. Fetching catalog...');
             try {
                 const catalog = await getStoreCatalog();
                 if (catalog && catalog.length > 0) {
-                    console.log('Catalog received, emitting show-store event:', catalog);
                     EventBus.emit('show-store', catalog);
                 } else {
-                    console.log('No items found in catalog or failed to fetch.');
                     // Optionally emit an event to show an empty store or error message
                     EventBus.emit('show-store', []); // Show empty store
                     // alert('Store catalog is empty or unavailable.'); 
@@ -169,7 +164,6 @@ export class MainMenu extends Scene
 
         // Tip Button
         const tipButton = this.createButton('Tip Developer', () => {
-            console.log('Tip button clicked.');
             openTipUrl();
         });
         tipButton.setPosition(this.cameras.main.width / 2, tipButtonY);

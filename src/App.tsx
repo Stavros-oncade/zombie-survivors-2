@@ -19,14 +19,12 @@ function App()
     useEffect(() => {
         // Listener for showing the store
         const showStoreHandler = (items: PurchaseItem[]) => {
-            console.log('App: Received show-store event', items);
             setStoreItems(items);
             setIsStoreVisible(true);
         };
         
         // Listener for hiding the store
         const hideStoreHandler = () => {
-            console.log('App: Received hide-store event');
             setIsStoreVisible(false);
             setStoreItems([]); // Clear items when hiding
         };
