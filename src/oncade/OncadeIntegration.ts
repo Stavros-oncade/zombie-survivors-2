@@ -6,7 +6,8 @@ const ONCADE_GAME_ID = 'zombie-survivors-v2-cm511';
 // Create a new SDK instance
 const sdk = new OncadeSDK({
   apiKey: ONCADE_API_KEY,
-  gameId: ONCADE_GAME_ID
+  gameId: ONCADE_GAME_ID,
+  remoteConfig: { enabled: true, pollIntervalMs: 60_000_000 }
 });
 
 let isInitialized = false;
@@ -246,6 +247,13 @@ async function getConfig<T>(key: string, defaultValue?: T): Promise<T | undefine
   if (!isInitialized) return defaultValue;
 
   try {
+    // Get session info to ensure we have a valid session
+    const sessionInfo = await sdk.getSessionInfo();
+    if (!sessionInfo.isValid) {
+      console.warn('No valid Oncade session available for config request.');
+      return defaultValue;
+    }
+
     const value = await sdk.getConfig<T>(key, defaultValue);
     return value;
   } catch (error) {
@@ -266,6 +274,13 @@ async function getAllConfig(): Promise<Record<string, unknown>> {
   if (!isInitialized) return {};
 
   try {
+    // Get session info to ensure we have a valid session
+    const sessionInfo = await sdk.getSessionInfo();
+    if (!sessionInfo.isValid) {
+      console.warn('No valid Oncade session available for config request.');
+      return {};
+    }
+
     const config = await sdk.getAllConfig();
     return config;
   } catch (error) {
