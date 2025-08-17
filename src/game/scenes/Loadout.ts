@@ -44,7 +44,7 @@ export class Loadout extends Scene {
     const lm2 = LoadoutManager.getInstance();
     const defLabel = this.add.text(w/2, y + 20, 'Defensive Skill', { fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5);
     y += 60;
-    const defensiveOptions: Array<[string, string]> = [['Dash','dash'], ['Barrier','barrier']];
+    const defensiveOptions: Array<[string, string]> = [['Dash','dash'], ['Barrier','barrier'], ['Repulse','repulse']];
     const updateDefensiveInfo = (id: string) => {
       const info = this.getDefensiveSkillInstructions(id);
       if (!this.defensiveInfoText) {
@@ -115,6 +115,9 @@ export class Loadout extends Scene {
     }
     if (id === 'barrier') {
       return 'Barrier — Press Shift to deploy a short-lived protective field.\nGrants brief invulnerability while active. Cooldown similar to Dash; duration improves with level.';
+    }
+    if (id === 'repulse') {
+      return 'Repulse — Press Shift to emit a shockwave that pushes enemies away without dealing damage.\nAlso disperses toxic gas clouds in range. Radius and force scale with level.';
     }
     return 'Select a defensive skill to see instructions.';
   }

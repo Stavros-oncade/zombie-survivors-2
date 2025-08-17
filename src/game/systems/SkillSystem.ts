@@ -1,6 +1,6 @@
 import { Game } from '../scenes/Game';
 
-export type DefensiveSkillId = 'dash' | 'barrier';
+export type DefensiveSkillId = 'dash' | 'barrier' | 'repulse';
 
 export class SkillSystem {
   private game: Game;
@@ -35,6 +35,7 @@ export class SkillSystem {
     this.lastUsed = now;
     if (this.skill === 'dash') this.activateDash();
     if (this.skill === 'barrier') this.activateBarrier();
+    if (this.skill === 'repulse') this.activateRepulse();
     return true;
   }
 
@@ -75,5 +76,68 @@ export class SkillSystem {
     // On hit while active, reduce damage (handled in Player? For prototype, grant i-frames window)
     (player as any).immunityTimer?.destroy();
     (player as any).immunityTimer = this.game.time.addEvent({ delay: dur, callback: () => { (player as any).lastDamageSource = null; }});
+  }
+
+  private activateRepulse() {
+    const player: any = (this.game as any).player;
+    const px = player.x, py = player.y;
+    const radius = 220 + (this.level - 1) * 25; // grows slightly with level
+    const maxForce = 900 + (this.level - 1) * 120; // stronger with level
+
+    // Visual: brief expanding ring
+    const ring = this.game.add.graphics();
+    ring.lineStyle(4, 0x88ccff, 0.9);
+    ring.strokeCircle(px, py, radius * 0.35);
+    this.game.tweens.add({
+      targets: ring,
+      alpha: 0,
+      duration: 220,
+      onUpdate: (tw) => {
+        const t = tw.progress;
+        ring.clear();
+        ring.lineStyle(4, 0x88ccff, 0.9 * (1 - t));
+        ring.strokeCircle(px, py, radius * (0.35 + 0.65 * t));
+      },
+      onComplete: () => ring.destroy()
+    });
+    this.game.cameras.main.shake(100, 0.004);
+
+    // Apply pure knockback (no damage) to nearby enemies
+    const enemiesGroup = (this.game as any).enemies as Phaser.Physics.Arcade.Group;
+    if (enemiesGroup) {
+      const enemies = enemiesGroup.getChildren() as any[];
+      enemies.forEach((e: any) => {
+        if (!e || !e.active) return;
+        const ex = e.x as number; const ey = e.y as number;
+        const d = Phaser.Math.Distance.Between(px, py, ex, ey);
+        if (d <= radius) {
+          const angle = Phaser.Math.Angle.Between(px, py, ex, ey);
+          const force = Math.max(0, maxForce * (1 - d / radius));
+          if (typeof e.applyKnockback === 'function') e.applyKnockback(force, angle);
+        }
+      });
+    }
+
+    // Clear toxic gas clouds within radius
+    const gasSet = (this.game as any).__gasClouds as Set<any> | undefined;
+    if (gasSet && gasSet.size > 0) {
+      const toRemove: any[] = [];
+      gasSet.forEach((g: any) => {
+        const gx = (g as any).__gasX ?? 0;
+        const gy = (g as any).__gasY ?? 0;
+        const r = (g as any).__gasRadius ?? 0;
+        const d = Phaser.Math.Distance.Between(px, py, gx, gy);
+        if (d <= radius + r) {
+          toRemove.push(g);
+        }
+      });
+      toRemove.forEach((g: any) => {
+        try {
+          (g as any).__gasTick?.destroy?.();
+        } catch {}
+        if (g?.destroy) g.destroy();
+        gasSet.delete(g);
+      });
+    }
   }
 }

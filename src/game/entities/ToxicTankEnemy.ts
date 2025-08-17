@@ -40,7 +40,19 @@ export class ToxicTankEnemy extends Enemy {
         player.takeDamage?.(4, this);
       }
     }});
-    this.scene.time.delayedCall(5000, () => { g.destroy(); tick.destroy(); });
+    // Tag for cleanup by repulse skill
+    (g as any).__gasX = this.x;
+    (g as any).__gasY = this.y;
+    (g as any).__gasRadius = radius;
+    (g as any).__gasTick = tick;
+    const gameScene: any = this.scene as any;
+    if (!gameScene.__gasClouds) gameScene.__gasClouds = new Set();
+    gameScene.__gasClouds.add(g);
+    this.scene.time.delayedCall(5000, () => {
+      try { tick.destroy(); } catch {}
+      try { g.destroy(); } catch {}
+      gameScene.__gasClouds?.delete?.(g);
+    });
 
     super.die();
   }

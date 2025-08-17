@@ -154,7 +154,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.health = Math.min(this.maxHealth, this.health + amount);
     }
 
-    private die(): void {
+    protected die(): void {
         // Create death effect before destroying the enemy
         new DeathEffect(this.scene, this.x, this.y, this.texture.key, this.enemyType);
         

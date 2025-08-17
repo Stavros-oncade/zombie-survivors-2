@@ -1,5 +1,5 @@
 export type CharacterId = 'soldier' | 'scout' | 'demolitionist';
-export type DefensiveSkillId = 'dash' | 'barrier';
+export type DefensiveSkillId = 'dash' | 'barrier' | 'repulse';
 export type KillstreakPerkId = 'damage' | 'xp' | 'speed';
 
 type CharacterPreset = {
@@ -26,7 +26,7 @@ export class LoadoutManager {
       this.selected = saved;
     }
     const ds = localStorage.getItem('zs2_loadout_defensive');
-    if (ds === 'dash' || ds === 'barrier') this.defensiveSkill = ds;
+    if (ds === 'dash' || ds === 'barrier' || ds === 'repulse') this.defensiveSkill = ds as DefensiveSkillId;
     const kp = localStorage.getItem('zs2_loadout_killstreak');
     if (kp === 'damage' || kp === 'xp' || kp === 'speed') this.killstreakPerk = kp;
   }
