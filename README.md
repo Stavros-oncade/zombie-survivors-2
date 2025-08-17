@@ -27,7 +27,13 @@ A simple Vampire Survivors-style game built with Phaser 3, React, and TypeScript
 npm install
 ```
 
-3. Start the development server:
+3. Configure Oncade (optional):
+   - Copy `.env.example` to `.env` and set:
+     - `VITE_ONCADE_API_KEY`
+     - `VITE_ONCADE_GAME_ID`
+   - If these are not set, Oncade features (Store, Tip, Remote Config, Telemetry) will be disabled safely.
+
+4. Start the development server:
 ```bash
 npm run dev
 ```

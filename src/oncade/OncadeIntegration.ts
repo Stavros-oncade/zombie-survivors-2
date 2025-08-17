@@ -1,14 +1,11 @@
 import { OncadeSDK, PurchaseItem } from '@oncade/sdk';
 
-const ONCADE_API_KEY = 'api_live_4b8b1235e13fd0cf4983d46496c4930b54915931e0ee0638f055c0390ced985a';
-const ONCADE_GAME_ID = 'zombie-survivors-v2-cm511';
+// Load config from Vite env (must be prefixed with VITE_)
+const ONCADE_API_KEY = (import.meta as any).env?.VITE_ONCADE_API_KEY as string | undefined;
+const ONCADE_GAME_ID = (import.meta as any).env?.VITE_ONCADE_GAME_ID as string | undefined;
 
-// Create a new SDK instance
-const sdk = new OncadeSDK({
-  apiKey: ONCADE_API_KEY,
-  gameId: ONCADE_GAME_ID,
-  remoteConfig: { enabled: true, pollIntervalMs: 60_000_000 }
-});
+// Lazily instantiate SDK once env is verified
+let sdk: OncadeSDK | null = null;
 
 let isInitialized = false;
 
@@ -19,14 +16,29 @@ async function initializeOncade(): Promise<void> {
     return;
   }
   try {
-    // Check if running in an environment where Oncade SDK can initialize
-    // (e.g., not in a Node.js environment during build if SDK relies on browser APIs)
+    // Guard: ensure we have required env
+    if (!ONCADE_API_KEY || !ONCADE_GAME_ID) {
+      console.warn('Oncade env missing. Set VITE_ONCADE_API_KEY and VITE_ONCADE_GAME_ID.');
+      isInitialized = false;
+      return;
+    }
+
+    // Instantiate SDK if not already
+    if (!sdk) {
+      sdk = new OncadeSDK({
+        apiKey: ONCADE_API_KEY,
+        gameId: ONCADE_GAME_ID,
+        remoteConfig: { enabled: true, pollIntervalMs: 60_000_000 }
+      });
+    }
+
+    // Check if running in a browser environment
     if (typeof window !== 'undefined') {
-        await sdk.initialize();
-        isInitialized = true;
-        console.log('Oncade SDK initialized successfully.');
+      await sdk.initialize();
+      isInitialized = true;
+      console.log('Oncade SDK initialized successfully.');
     } else {
-        console.warn('Oncade SDK initialization skipped: Not in a browser environment.');
+      console.warn('Oncade SDK initialization skipped: Not in a browser environment.');
     }
   } catch (error) {
     console.error('Failed to initialize Oncade SDK:', error);
@@ -43,6 +55,7 @@ async function getStoreCatalog(): Promise<PurchaseItem[]> {
   if (!isInitialized) return []; // Return empty if initialization failed or skipped
 
   try {
+    if (!sdk) return [];
     const catalog = await sdk.getStoreCatalog();
     console.log('Available items:', catalog);
     return catalog;
@@ -65,6 +78,7 @@ async function openPurchaseUrl(itemId: string): Promise<void> {
   try {
     // Adjust the redirect URL path as needed for your game's routing
     const redirectUrl = `${window.location.origin}/purchase-success`;
+    if (!sdk) return;
     const purchaseUrl = await sdk.getPurchaseURL({
       itemId,
       redirectUrl: redirectUrl
@@ -106,6 +120,7 @@ async function openTipUrl(): Promise<void> {
   try {
     // Adjust the redirect URL path as needed for your game's routing
     const redirectUrl = `${window.location.origin}/tip-success`;
+    if (!sdk) return;
     const tipUrl = await sdk.getTipURL({
        redirectUrl: redirectUrl,
        gameId: ONCADE_GAME_ID
@@ -146,6 +161,7 @@ async function checkPurchases() {
    if (!isInitialized) return null;
 
   try {
+    if (!sdk) return null;
     const sessionInfo = await sdk.getSessionInfo();
     if (!sessionInfo.isValid) {
       console.warn('No valid Oncade session available.');
@@ -190,6 +206,7 @@ async function openLoginUrl(): Promise<void> {
     if (!isInitialized) return;
 
    try {
+     if (!sdk) return;
      // Get session info to retrieve the token if available
      const sessionInfo = await sdk.getSessionInfo();
      if (!sessionInfo.isValid || !sessionInfo.sessionToken) {
@@ -247,6 +264,7 @@ async function getConfig<T>(key: string, defaultValue?: T): Promise<T | undefine
   if (!isInitialized) return defaultValue;
 
   try {
+    if (!sdk) return defaultValue;
     // Get session info to ensure we have a valid session
     const sessionInfo = await sdk.getSessionInfo();
     if (!sessionInfo.isValid) {
@@ -274,6 +292,7 @@ async function getAllConfig(): Promise<Record<string, unknown>> {
   if (!isInitialized) return {};
 
   try {
+    if (!sdk) return {};
     // Get session info to ensure we have a valid session
     const sessionInfo = await sdk.getSessionInfo();
     if (!sessionInfo.isValid) {
@@ -303,6 +322,7 @@ function onConfigChange<T>(key: string, callback: (value: T) => void): () => voi
   }
 
   try {
+    if (!sdk) return () => {};
     return sdk.onConfigChange<T>(key, callback);
   } catch (error) {
     console.error(`Failed to subscribe to config changes for key "${key}":`, error);
@@ -330,6 +350,7 @@ function trackEvent<EventPayload extends Record<string, unknown>>(
   }
 
   try {
+    if (!sdk) return;
     sdk.track(eventName, payload || {}, options);
   } catch (error) {
     console.error(`Failed to track event "${eventName}":`, error);
@@ -348,6 +369,7 @@ async function flushTelemetry(): Promise<void> {
   if (!isInitialized) return;
 
   try {
+    if (!sdk) return;
     await sdk.flushTelemetry();
   } catch (error) {
     console.error('Failed to flush telemetry:', error);
@@ -368,4 +390,4 @@ export {
   trackEvent,
   flushTelemetry,
   sdk as oncadeSDK // Export sdk instance if needed elsewhere
-}; 
+};

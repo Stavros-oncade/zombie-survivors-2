@@ -1,5 +1,6 @@
 import { Scene } from 'phaser';
 import { Enemy } from '../entities/Enemy';
+import { ExplosionConfig } from '../config/ExplosionConfig';
 
 interface WeaponConfig {
     damage: number;
@@ -10,6 +11,7 @@ interface WeaponConfig {
 
 export class Weapon {
     private damage: number;
+    private tempDamageMultiplier: number = 1;
     private attackSpeed: number;
     private projectileSpeed: number;
     private level: number;
@@ -80,13 +82,15 @@ export class Weapon {
         enemies.forEach(enemy => {
             if (!(enemy instanceof Enemy)) return;
             scene.physics.add.collider(projectile, enemy, () => {
-                enemy.takeDamage(this.damage);
+                enemy.takeDamage(this.getDamage());
                 projectile.destroy();
             });
         });
 
-        // Destroy projectile after 2 seconds
-        scene.time.delayedCall(4000, () => {
+        // Destroy projectile after traveling max range (3x bomb radius) or fallback timeout
+        const maxDistance = ExplosionConfig.RADIUS * 3;
+        const maxLifetime = Math.ceil((maxDistance / this.projectileSpeed) * 1000);
+        scene.time.delayedCall(Math.min(4000, maxLifetime), () => {
             if (projectile && projectile.active) {
                 projectile.destroy();
             }
@@ -112,7 +116,7 @@ export class Weapon {
     }
 
     public getDamage(): number {
-        return this.damage;
+        return Math.max(0, this.damage * this.tempDamageMultiplier);
     }
 
     public getAttackSpeed(): number {
@@ -122,4 +126,14 @@ export class Weapon {
     public getProjectileSpeed(): number {
         return this.projectileSpeed;
     }
-} 
+
+    public setDamage(value: number): void {
+        this.damage = Math.max(0, value);
+    }
+
+    // Temporary damage multiplier support (e.g., timed buffs)
+    public setTempDamageMultiplier(multiplier: number): void {
+        // Directly set so applying twice with same value doesn't compound
+        this.tempDamageMultiplier = Math.max(0, multiplier);
+    }
+}

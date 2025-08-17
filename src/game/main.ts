@@ -7,6 +7,9 @@ import { Preloader } from './scenes/Preloader';
 import { PauseMenu } from './scenes/PauseMenu';
 import { LevelUpSelection } from './scenes/LevelUpSelection';
 import { ScreenManager } from './utils/ScreenManager';
+import { Loadout } from './scenes/Loadout';
+import { Blueprints } from './scenes/Blueprints';
+import { SpawnTuner } from './scenes/SpawnTuner';
 
 //  Find out more information about the Game Config at:
 //  https://newdocs.phaser.io/docs/3.70.0/Phaser.Types.Core.GameConfig
@@ -20,10 +23,13 @@ const config: Phaser.Types.Core.GameConfig = {
         Boot,
         Preloader,
         MainMenu,
+        Loadout,
+        SpawnTuner,
         MainGame,
         GameOver,
         PauseMenu,
-        LevelUpSelection
+        LevelUpSelection,
+        Blueprints
     ],
     physics: {
         default: 'arcade',
@@ -62,9 +68,14 @@ const StartGame = (parent: string) => {
     }
 
     // Ensure the canvas always matches viewport size
-    window.addEventListener('resize', () => {
+    const onResize = () => {
+        // Guard in case game is destroyed
+        if (!game || !(game as any).scale || !(game as any).canvas) return;
         game.scale.resize(window.innerWidth, window.innerHeight);
-    });
+    };
+    window.addEventListener('resize', onResize);
+    // Stash listener for cleanup
+    (game as any).__onResize = onResize;
 
     // Initialize the screen manager after game creation
     const screenManager = ScreenManager.getInstance();

@@ -38,6 +38,11 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(function PhaserGame
         {
             if (game.current)
             {
+                // Remove resize listener if present
+                const g: any = game.current;
+                if (g && g.__onResize) {
+                    window.removeEventListener('resize', g.__onResize);
+                }
                 game.current.destroy(true);
                 if (game.current !== null)
                 {

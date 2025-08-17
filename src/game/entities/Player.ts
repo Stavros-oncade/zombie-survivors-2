@@ -69,12 +69,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     public takeDamage(amount: number, source: Enemy): void {
-        // Check if the player is immune to this damage source
-        if (this.lastDamageSource === source && this.immunityTimer && !this.immunityTimer.getRemaining()) {
+        // Check if the player is immune to this damage source (while timer has remaining time)
+        if (this.lastDamageSource === source && this.immunityTimer && this.immunityTimer.getRemaining() > 0) {
             return; // Player is still immune to this source
         }
 
         this.health = Math.max(0, this.health - amount);
+        // Emit player hit event for systems that react (killstreak reset, etc.)
+        this.scene.events.emit('player_hit', { amount });
         this.lastDamageSource = source;
         
         // Clear any existing immunity timer
@@ -98,7 +100,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     public applyLevelUpEffects(): void {
         this.maxHealth = Math.floor(this.maxHealth * 1.1);
         this.health = this.maxHealth;
-        this.movementSpeed = this.movementSpeed * 1.05;
+        // Use asymptotic increase toward max speed
+        this.applyAsymptoticSpeedIncrease(1.05);
         console.log(`Player Level Up Effects Applied! New Max HP: ${this.maxHealth}, New Speed: ${this.movementSpeed.toFixed(2)}`);
         
         // Track level up event
@@ -226,7 +229,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     public setMovementSpeed(newSpeed: number): void {
-        this.movementSpeed = newSpeed;
+        // Clamp to [0, MAX]
+        const max = (GameConstants as any).PLAYER?.MAX_MOVEMENT_SPEED ?? this.movementSpeed;
+        this.movementSpeed = Math.max(0, Math.min(newSpeed, max));
     }
 
     public upgradeWeaponDamage(multiplier: number): void {
@@ -293,4 +298,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         
         super.destroy(fromScene);
     }
-} 
+
+    // Asymptotic speed growth toward a cap for permanent upgrades
+    public applyAsymptoticSpeedIncrease(multiplier: number): void {
+        const max = (GameConstants as any).PLAYER?.MAX_MOVEMENT_SPEED ?? this.movementSpeed;
+        const current = this.movementSpeed;
+        const factor = Math.max(1, multiplier);
+        const increment = (max - current) * (factor - 1);
+        this.setMovementSpeed(current + increment);
+    }
+}

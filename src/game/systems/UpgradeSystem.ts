@@ -1,6 +1,8 @@
 import { Player } from '../entities/Player';
 import { Upgrade } from '../types/GameTypes';
 import { GameConstants } from '../config/GameConstants';
+import { RELICS } from './RelicSystem';
+import { Game } from '../scenes/Game';
 
 export class UpgradeSystem {
     private static availableUpgrades: Upgrade[] = [
@@ -19,7 +21,8 @@ export class UpgradeSystem {
             name: 'Speed Boost',
             description: 'Increase your movement speed by 15%',
             effect: (player: Player) => {
-                player.setMovementSpeed(player.getMovementSpeed() * 1.15);
+                // Asymptotically approach max movement speed
+                player.applyAsymptoticSpeedIncrease(1.15);
             }
         },
         {
@@ -47,6 +50,24 @@ export class UpgradeSystem {
             }
         },
         {
+            id: 'piercing_shot',
+            name: 'Piercing Shot',
+            description: 'Unlocks or upgrades a piercing projectile weapon',
+            effect: (player: Player) => {
+                const game = player.scene.scene.get('Game') as Game;
+                game.getWeaponSystem().unlockPiercing();
+            }
+        },
+        {
+            id: 'explosive_burst',
+            name: 'Explosive Burst',
+            description: 'Unlocks or upgrades a short-range explosive burst',
+            effect: (player: Player) => {
+                const game = player.scene.scene.get('Game') as Game;
+                game.getWeaponSystem().unlockExplosive();
+            }
+        },
+        {
             id: 'projectile_speed',
             name: 'Projectile Speed',
             description: 'Increase projectile speed by 30%',
@@ -69,5 +90,38 @@ export class UpgradeSystem {
         }
         
         return selected;
+    }
+
+    // Convert relics into Upgrade-like choices that grant relics
+    public static getRandomRelicUpgrades(count: number): Upgrade[] {
+        return this.getRandomRelicUpgradesFiltered(count);
+    }
+
+    public static getRandomRelicUpgradesFiltered(count: number, acquired?: Set<string>): Upgrade[] {
+        // Weighted selection from RELICS, skipping acquired
+        const working = RELICS.filter(r => !acquired || !acquired.has(r.id));
+        const selected: typeof RELICS = [] as any;
+        while (selected.length < count && working.length > 0) {
+            const totalWeight = working.reduce((sum, r) => sum + r.weight, 0);
+            let roll = Math.random() * totalWeight;
+            let pickIndex = 0;
+            for (let i = 0; i < working.length; i++) {
+                roll -= working[i].weight;
+                if (roll <= 0) { pickIndex = i; break; }
+            }
+            const pick = working.splice(pickIndex, 1)[0];
+            selected.push(pick);
+        }
+        return selected.map(r => ({
+            id: `relic_${r.id}`,
+            name: `${r.name} [${r.rarity}]`,
+            description: r.description,
+            effect: (player: Player) => {
+                const game = player.scene.scene.get('Game') as any;
+                if (game && game.getRelicSystem) {
+                    game.getRelicSystem().acquireRelic(r.id);
+                }
+            }
+        }));
     }
 } 

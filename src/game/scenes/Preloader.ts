@@ -61,6 +61,12 @@ export class Preloader extends Scene
         this.load.image('enemy', 'assets/zombie.png');
         this.load.image('enemy_tank', 'assets/tank.png');
         this.load.image('enemy_fast', 'assets/enemy_fast.png');
+        // Optional ranged enemy sprite
+        // this.load.image('enemy_ranged', 'assets/enemy_ranged.png');
+        // Optional carrier enemy sprite
+        // this.load.image('enemy_carrier', 'assets/enemy_carrier.png');
+        // Toxic tank uses tank sprite; optional: distinct toxic sprite
+        // this.load.image('enemy_toxic', 'assets/enemy_toxic.png');
         this.load.image('projectile', 'assets/plasma_bullet.png');
         this.load.image('logo', 'assets/title.png');
         this.load.image('pickup_health', 'assets/pickup_health.png');
@@ -68,6 +74,30 @@ export class Preloader extends Scene
         this.load.image('pickup_dmg', 'assets/pickup_dmg.png');
         this.load.image('pickup_bomb', 'assets/pickup_bomb.png');
         this.load.image('pickup_speed', 'assets/pickup_speed.png');
+
+        // Optional new assets (provide these files to improve visuals):
+        // Weapons / VFX
+        // this.load.image('proj_piercing', 'assets/proj_piercing.png');
+        // this.load.image('proj_inferno', 'assets/proj_inferno.png');
+        // this.load.image('explosion_small', 'assets/explosion_small.png');
+        // Enemies
+        // this.load.image('enemy_elite', 'assets/enemy_elite.png');
+        // Relic icons
+        // this.load.image('relic_greed', 'assets/relic_greed.png');
+        // this.load.image('relic_celerity', 'assets/relic_celerity.png');
+        // this.load.image('relic_arsenal', 'assets/relic_arsenal.png');
+        // this.load.image('relic_warp_coils', 'assets/relic_warp_coils.png');
+        // this.load.image('relic_vitality', 'assets/relic_vitality.png');
+        // this.load.image('relic_sharpshooter', 'assets/relic_sharpshooter.png');
+        // this.load.image('relic_overclock', 'assets/relic_overclock.png');
+        // Upgrade icons
+        // this.load.image('upgrade_piercing', 'assets/upgrade_piercing.png');
+        // this.load.image('upgrade_explosive', 'assets/upgrade_explosive.png');
+        // this.load.image('upgrade_projectile', 'assets/upgrade_projectile.png');
+        // this.load.image('upgrade_weapon_damage', 'assets/upgrade_weapon_damage.png');
+        // this.load.image('upgrade_weapon_speed', 'assets/upgrade_weapon_speed.png');
+        // this.load.image('upgrade_speed', 'assets/upgrade_speed.png');
+        // this.load.image('upgrade_health', 'assets/upgrade_health.png');
     }
 
     create ()
@@ -76,6 +106,37 @@ export class Preloader extends Scene
         //  For example, you can define global animations here, so we can use them in other scenes.
 
         //  Move to the MainMenu. You could also swap this for a Scene Transition, such as a camera fade.
+        // Generate placeholder textures for any missing icons so the UI can still render
+        const ensureIcon = (key: string, color: number) => {
+            if (this.textures.exists(key)) return;
+            const g = this.add.graphics();
+            g.fillStyle(color, 1);
+            g.fillRoundedRect(0, 0, 48, 48, 6);
+            g.generateTexture(key, 48, 48);
+            g.destroy();
+        };
+        [
+            ['relic_greed', 0xdaa520],
+            ['relic_celerity', 0x00ffaa],
+            ['relic_arsenal', 0xff4444],
+            ['relic_warp_coils', 0x66ccff],
+            ['relic_vitality', 0xff77aa],
+            ['relic_sharpshooter', 0xffaa33],
+            ['relic_overclock', 0xaa66ff],
+            ['upgrade_piercing', 0x66ccff],
+            ['upgrade_explosive', 0xff8844],
+            ['upgrade_projectile', 0x66ccff],
+            ['upgrade_weapon_damage', 0xff4444],
+            ['upgrade_weapon_speed', 0xaa66ff],
+            ['upgrade_speed', 0x00ffaa],
+            ['upgrade_health', 0xff77aa]
+        ].forEach(([k, c]) => ensureIcon(k as string, c as number));
+
+        // Blueprint drop placeholder
+        ensureIcon('blueprint_drop', 0x00bcd4);
+
         this.scene.start('MainMenu');
     }
 }
+        // Blueprint drop icon
+        // this.load.image('blueprint_drop', 'assets/blueprint_drop.png');

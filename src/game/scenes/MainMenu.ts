@@ -138,7 +138,7 @@ export class MainMenu extends Scene
         .setInteractive({ useHandCursor: true })
         .on('pointerover', () => this.playButton.setStyle({ color: '#ffff00' }))
         .on('pointerout', () => this.playButton.setStyle({ color: '#ffffff' }))
-        .on('pointerdown', () => this.changeScene());
+        .on('pointerdown', () => this.scene.start('Loadout'));
         
         // --- Add Oncade Buttons --- 
         // Store Button (Now emits event to show React UI)
@@ -170,6 +170,13 @@ export class MainMenu extends Scene
         tipButton.setDepth(102);
         // --- End Oncade Buttons ---
 
+        // Blueprints Button
+        const bpButton = this.createButton('Blueprints', () => {
+            this.scene.start('Blueprints');
+        });
+        bpButton.setPosition(this.cameras.main.width / 2, playButtonY - buttonYOffset);
+        bpButton.setDepth(102);
+
         // Initialize zombies
         this.initializeZombies();
 
@@ -193,7 +200,7 @@ export class MainMenu extends Scene
         // Clean up all zombies and their update callbacks
         this.cleanupZombies();
 
-        this.scene.start('Game');
+        this.scene.start('Loadout');
     }
 
     cleanupZombies(): void {

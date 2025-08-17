@@ -15,6 +15,15 @@ import { GameConstants } from "../config/GameConstants";
 import { ExplosionConfig } from "../config/ExplosionConfig";
 import { GameConfig } from "../config/GameConfig";
 import { BoostTimerUI } from "../ui/BoostTimerUI";
+import { EliteEnemy } from "../entities/EliteEnemy";
+import { RangedEnemy } from "../entities/RangedEnemy";
+import { RelicSystem } from "../systems/RelicSystem";
+import { LoadoutManager } from "../systems/LoadoutManager";
+import { BlueprintSystem } from "../systems/BlueprintSystem";
+import { SkillSystem } from "../systems/SkillSystem";
+import { KillstreakSystem } from "../systems/KillstreakSystem";
+import { SpawningConfig } from "../systems/SpawningConfig";
+import { BlueprintDrop } from "../entities/BlueprintDrop";
 
 export class Game extends Scene {
     private player!: Player;
@@ -34,12 +43,19 @@ export class Game extends Scene {
     private speedBoostTimer: Phaser.Time.TimerEvent | null = null;
     private damageBoostTimer: Phaser.Time.TimerEvent | null = null;
     private originalSpeed: number | null = null; // Track original speed
-    private originalDamage: number | null = null; // Track original damage
+    private isEliteIntro: boolean = false;
     private collectedPickups: Set<Pickup> = new Set(); // Track pickups that have been collected
     private initialTouchPoint: Phaser.Math.Vector2 | null = null;
     private currentTouchPoint: Phaser.Math.Vector2 | null = null;
     private touchIndicator: Phaser.GameObjects.Sprite | null = null;
     private centerDot: Phaser.GameObjects.Graphics | null = null;
+    private relicSystem!: RelicSystem;
+    private skillSystem!: SkillSystem;
+    private killstreakSystem!: KillstreakSystem;
+    private skillButtonCircle: Phaser.GameObjects.Graphics | null = null;
+    private skillButtonIcon: Phaser.GameObjects.Text | null = null;
+    private isLevelUpPending: boolean = false;
+    private eliteXPDelayUntil: number = 0;
 
     constructor() {
         super({ key: "Game" });
@@ -103,6 +119,53 @@ export class Game extends Scene {
         // Initialize Boost Timer UI
         this.boostTimerUI = new BoostTimerUI(this);
 
+        // After UI is ready, apply requested start wave (ensures banner shows)
+        {
+            const sc = SpawningConfig.getInstance();
+            if (sc.startState) {
+                this.enemySpawnSystem.forceState(sc.startState);
+                sc.startState = undefined;
+            }
+        }
+
+        // Initialize relic system (per-run)
+        this.relicSystem = new RelicSystem(this);
+
+        // Apply character loadout
+        const lm = LoadoutManager.getInstance();
+        const character = lm.getCharacter();
+        if (character === 'soldier') {
+            this.player.setMaxHealth(Math.floor(this.player.getStats().maxHealth * 1.2));
+            this.player.heal(0);
+        } else if (character === 'scout') {
+            this.player.applyAsymptoticSpeedIncrease(1.10);
+        } else if (character === 'demolitionist') {
+            this.weaponSystem.unlockExplosive();
+        }
+
+        // Apply permanent blueprints
+        BlueprintSystem.applyToGame(this);
+
+        // Initialize skills and killstreak
+        const lmSkill = LoadoutManager.getInstance();
+        this.skillSystem = new SkillSystem(this, lmSkill.getDefensiveSkill() as any);
+        this.killstreakSystem = new KillstreakSystem(this, lmSkill.getKillstreakPerk() as any);
+
+        // Apply spawning tuner options at start — schedule after a short delay
+        const sc = SpawningConfig.getInstance();
+        if (sc.spawnEliteOnStart) {
+            this.time.delayedCall(2500, () => {
+                this.enemySpawnSystem.triggerElite();
+                sc.spawnEliteOnStart = false; // one-shot
+            });
+        }
+        if (sc.spawnBossOnStart) {
+            this.time.delayedCall(3500, () => {
+                this.enemySpawnSystem.triggerBoss();
+                sc.spawnBossOnStart = false; // one-shot
+            });
+        }
+
         // Setup input
         if (this.input.keyboard) {
             this.cursors = this.input.keyboard.createCursorKeys();
@@ -111,6 +174,7 @@ export class Game extends Scene {
                 down: Phaser.Input.Keyboard.KeyCodes.S,
                 left: Phaser.Input.Keyboard.KeyCodes.A,
                 right: Phaser.Input.Keyboard.KeyCodes.D,
+                dash: Phaser.Input.Keyboard.KeyCodes.SHIFT,
             }) as { [key: string]: Phaser.Input.Keyboard.Key };
 
             // Add escape key
@@ -208,7 +272,15 @@ export class Game extends Scene {
 
         // Setup experience gain - Listener now updates ExperienceSystem and Player's total XP gained
         this.events.on("enemyKilled", (xp: number) => {
-            this.experienceSystem.gainExperience(xp);
+            const xpMult = this.relicSystem ? this.relicSystem.getXPMultiplier() : 1;
+            const gain = Math.round(xp * xpMult);
+            const now = this.time.now;
+            if (now < this.eliteXPDelayUntil) {
+                const delay = this.eliteXPDelayUntil - now;
+                this.time.delayedCall(delay, () => this.experienceSystem.gainExperience(gain));
+            } else {
+                this.experienceSystem.gainExperience(gain);
+            }
             this.player.addXPGained(xp); // Track total XP for game over
             this.player.incrementEnemiesKilled(); // Track killed enemies
         });
@@ -250,6 +322,147 @@ export class Game extends Scene {
             // Add the pickup to the physics group
             this.pickups.add(pickup);
         });
+
+        // Initialize relic system (per-run)
+        this.relicSystem = new RelicSystem(this);
+
+        // Elite spawn intro and juice: pause physics, pan to elite, then resume on player input (enabled after 3s)
+        this.events.on('elite_spawned', (elite: EliteEnemy) => {
+            if (!this.scene.isActive()) { return; }
+            this.isEliteIntro = true;
+            this.physics.world.pause();
+
+            const cam = this.cameras.main;
+            const prevZoom = cam.zoom;
+            cam.stopFollow();
+            cam.pan(elite.x, elite.y, 300, 'Sine.easeInOut');
+            cam.zoomTo(1.5, 300);
+
+            const eliteNm = (elite as any).nameText?.text || 'ELITE';
+            const prompt = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.18,
+                `${eliteNm} — TAP TO CONTINUE`, {
+                    fontFamily: 'Arial Black', fontSize: '20px', color: '#ffff99', stroke: '#000000', strokeThickness: 6
+                }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
+
+            let resumed = false;
+            let allowInput = false;
+            const tryResume = () => {
+                if (!allowInput || resumed) return;
+                resumed = true;
+                prompt.destroy();
+                cam.pan(this.player.x, this.player.y, 320, 'Sine.easeInOut');
+                cam.zoomTo(prevZoom, 320);
+                this.time.delayedCall(330, () => {
+                    cam.startFollow(this.player);
+                    this.physics.world.resume();
+                    this.isEliteIntro = false;
+                });
+                this.input.off('pointerdown', tryResume);
+                this.input.keyboard?.off('keydown', tryResume as any);
+            };
+
+            // Register input immediately but gate it until allowed
+            this.input.on('pointerdown', tryResume);
+            this.input.keyboard?.on('keydown', tryResume as any);
+
+            // Enable input after 3 seconds
+            this.time.delayedCall(3000, () => { allowInput = true; });
+
+            // Safety auto-resume after 6 seconds
+            this.time.delayedCall(6000, tryResume);
+        });
+
+        // Boss spawn intro: pause physics, pan to boss, show label, resume on input
+        this.events.on('boss_spawned', (boss: any) => {
+            if (!this.scene.isActive()) { return; }
+            this.isEliteIntro = true; // reuse intro flag to pause updates
+            this.physics.world.pause();
+
+            const cam = this.cameras.main;
+            const prevZoom = cam.zoom;
+            cam.stopFollow();
+            cam.pan(boss.x, boss.y, 400, 'Sine.easeInOut');
+            cam.zoomTo(1.6, 400);
+
+            // World-space label centered on the boss, much larger
+            // Large boss name during intro (UI overlay)
+            const bossNm = (boss as any).nameText?.text || 'BOSS';
+            const bossLabel = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.2, bossNm, {
+                fontFamily: 'Arial Black', fontSize: '96px', color: '#ff4444', stroke: '#000000', strokeThickness: 12
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
+
+            let resumed = false;
+            let allowInput = false;
+            const tryResume = () => {
+                if (!allowInput || resumed) return;
+                resumed = true;
+                // Fade label quickly
+                this.tweens.add({ targets: bossLabel, alpha: 0, duration: 200, onComplete: () => bossLabel.destroy() });
+                // Pan back to player and restore
+                cam.pan(this.player.x, this.player.y, 350, 'Sine.easeInOut');
+                cam.zoomTo(prevZoom, 350);
+                this.time.delayedCall(360, () => {
+                    cam.startFollow(this.player);
+                    this.physics.world.resume();
+                    this.isEliteIntro = false;
+                });
+                this.input.off('pointerdown', tryResume);
+                this.input.keyboard?.off('keydown', tryResume as any);
+            };
+
+            // Register listeners; gate input for 3s to avoid instant skip
+            this.input.on('pointerdown', tryResume);
+            this.input.keyboard?.on('keydown', tryResume as any);
+            this.time.delayedCall(3000, () => { allowInput = true; });
+            // Safety auto-resume
+            this.time.delayedCall(7000, tryResume);
+        });
+
+        this.events.on('elite_died', (pos?: {x:number,y:number}) => {
+            // Scene may be shutting down; guard camera access
+            if (this.cameras && this.cameras.main) {
+                this.cameras.main.shake(200, 0.01);
+            }
+            // Delay XP gain for a short period so level-up UI doesn't interrupt the intro/outro
+            this.eliteXPDelayUntil = this.time.now + 2000;
+            // 50% chance to drop a blueprint point
+            if (pos && Math.random() < 0.5) {
+                this.spawnBlueprintDrops(pos.x, pos.y, 1);
+            }
+            // Elite chest reward: pause and offer relics
+            this.scene.pause();
+            const upgrades = UpgradeSystem.getRandomRelicUpgradesFiltered(3, this.relicSystem.getAcquiredIds());
+            if (this.scene.isActive("LevelUpSelection")) {
+                this.scene.stop("LevelUpSelection");
+            }
+            this.scene.launch("LevelUpSelection", { player: this.player, upgrades });
+        });
+
+        // Boss drop: 1-2 blueprint points
+        this.events.on('boss_died', (pos?: {x:number,y:number}) => {
+            if (pos) {
+                const count = Phaser.Math.Between(1, 2);
+                this.spawnBlueprintDrops(pos.x, pos.y, count);
+            }
+        });
+
+        // Mobile skill button (bottom-right)
+        if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            const cam = this.cameras.main;
+            const cx = cam.width - 70;
+            const cy = cam.height - 70;
+            const g = this.add.graphics();
+            g.setScrollFactor(0).setDepth(2000);
+            g.fillStyle(0x333333, 0.6);
+            g.fillCircle(cx, cy, 42);
+            g.lineStyle(3, 0xffffff, 0.9);
+            g.strokeCircle(cx, cy, 42);
+            g.setInteractive(new Phaser.Geom.Circle(cx, cy, 42), Phaser.Geom.Circle.Contains);
+            g.on('pointerdown', () => this.skillSystem?.tryActivate());
+            const t = this.add.text(cx, cy, 'Skill', { fontSize: '14px', color: '#ffeb99', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setScrollFactor(0).setDepth(2001);
+            this.skillButtonCircle = g;
+            this.skillButtonIcon = t;
+        }
     }
 
     update() {
@@ -260,8 +473,9 @@ export class Game extends Scene {
             this.togglePause();
         }
 
-        // Skip the rest of the update if the game is paused
+        // Skip the rest of the update if the game is paused or during elite intro
         if (this.scene.isPaused()) return;
+        if (this.isEliteIntro) return;
 
         // Update play time (in seconds)
         this.playTime += this.game.loop.delta / 1000;
@@ -272,19 +486,46 @@ export class Game extends Scene {
         // Update weapons (automatic firing)
         this.weaponSystem.update();
 
+        // Defensive skill activation (Shift)
+        if (this.wasdKeys && Phaser.Input.Keyboard.JustDown(this.wasdKeys['dash'])) {
+            this.skillSystem?.tryActivate();
+        }
+
         // enemies spawn on a timer they set internally
 
         // Update enemies
-        const enemyChildren = this.enemies.getChildren() as Enemy[];
+        const enemyChildren = this.enemies.getChildren() as any[];
         enemyChildren.forEach((enemy) => {
-            // Check if enemy is still active before moving
-            if (enemy.active) {
-                enemy.moveTowardsPlayer(this.player);
+            if (!enemy.active) return;
+            if (enemy instanceof EliteEnemy) {
+                enemy.update(this.player);
+            } else if (enemy instanceof RangedEnemy) {
+                enemy.updateBehavior(this.player);
+            } else {
+                (enemy as Enemy).moveTowardsPlayer(this.player);
             }
         });
 
         // Update UI
         this.gameUI.update(this.player.getStats());
+        // Skill cooldown HUD + mobile button feedback
+        if (this.skillSystem) {
+            const total = this.skillSystem.getCooldownTotalMs();
+            const remaining = this.skillSystem.getCooldownRemainingMs(this.time.now);
+            this.gameUI.updateSkillCooldown(remaining, total);
+            if (this.skillButtonCircle && this.skillButtonIcon) {
+                const onCd = remaining > 0;
+                this.skillButtonCircle.setAlpha(onCd ? 0.4 : 1);
+                this.skillButtonIcon.setAlpha(onCd ? 0.6 : 1);
+            }
+        }
+
+        // Killstreak HUD
+        if (this.killstreakSystem) {
+            const mult = this.killstreakSystem.getMultiplier();
+            const perk = this.killstreakSystem.getPerk();
+            this.gameUI.updateKillstreak(mult, perk as any);
+        }
     }
 
     private handlePlayerEnemyCollision(player: Player, enemy: Enemy) {
@@ -322,27 +563,80 @@ export class Game extends Scene {
         return this.weaponSystem;
     }
 
+    // Expose enemies group to spawners/carrier on-death
+    public getEnemiesGroup(): Phaser.Physics.Arcade.Group {
+        return this.enemies;
+    }
+
+    // Expose relic system for upgrade/relic effects
+    public getRelicSystem(): RelicSystem {
+        return this.relicSystem;
+    }
+
+    // Internal hook for relics to adjust XP multiplier
+    public getRelicSystemInternal(): RelicSystem {
+        return this.relicSystem;
+    }
+
+    // Helper for relics to apply asymptotic speed increase on player
+    public playerApplyAsymptoticSpeed(multiplier: number): void {
+        this.player.applyAsymptoticSpeedIncrease(multiplier);
+    }
+
+    // Helper for relics/blueprints to adjust max HP
+    public playerAdjustMaxHealth(multiplier: number): void {
+        this.player.setMaxHealth(Math.floor(this.player.getStats().maxHealth * multiplier));
+        this.player.heal(0);
+    }
+
+    private spawnBlueprintDrops(x: number, y: number, count: number): void {
+        for (let i = 0; i < count; i++) {
+            const ox = Phaser.Math.Between(-24, 24);
+            const oy = Phaser.Math.Between(-24, 24);
+            const drop = new BlueprintDrop(this, x + ox, y + oy, 1);
+            // Overlap with player to collect
+            this.physics.add.overlap(this.player, drop, () => {
+                drop.collect();
+            });
+            // If spawned on top of player, collect immediately
+            const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, drop.x, drop.y);
+            if (d < 48) {
+                drop.collect();
+            }
+        }
+    }
+
     private handleLevelUp(data: {
         level: number;
         previousLevel: number;
     }): void {
+        // Avoid stacking multiple pending level-ups
+        if (this.isLevelUpPending) {
+            return;
+        }
+        this.isLevelUpPending = true;
         console.log(`Level up from ${data.previousLevel} to ${data.level}`);
 
-        // Pause the game
-        this.scene.pause();
+        // Allow the built-in level up effect (UIEffects listener) to play for 1s, then pause and show menu
+        this.time.delayedCall(1000, () => {
+            // Pause the game
+            this.scene.pause();
 
-        // Stop the LevelUpSelection scene if it's already running
-        if (this.scene.isActive("LevelUpSelection")) {
-            this.scene.stop("LevelUpSelection");
-        }
+            // Stop the LevelUpSelection scene if it's already running
+            if (this.scene.isActive("LevelUpSelection")) {
+                this.scene.stop("LevelUpSelection");
+            }
 
-        // Get random upgrades
-        const upgrades = UpgradeSystem.getRandomUpgrades(3);
+            // 15% chance to offer relics instead of upgrades
+            const upgrades = Math.random() < 0.15
+                ? UpgradeSystem.getRandomRelicUpgrades(3)
+                : UpgradeSystem.getRandomUpgrades(3);
 
-        // Launch the level up selection scene
-        this.scene.launch("LevelUpSelection", {
-            player: this.player,
-            upgrades: upgrades,
+            // Launch the level up selection scene
+            this.scene.launch("LevelUpSelection", {
+                player: this.player,
+                upgrades: upgrades,
+            });
         });
     }
 
@@ -353,6 +647,8 @@ export class Game extends Scene {
         // The game scene is already resumed by the LevelUpSelection scene
         // We can add additional logic here if needed
         this.scene.resume();
+        // Allow future level-ups to schedule their menu
+        this.isLevelUpPending = false;
     }
 
     private handlePlayerPickupCollision(player: Player, pickup: Pickup): void {
@@ -476,33 +772,20 @@ export class Game extends Scene {
     }
 
     private applyDamageBoost(multiplier: number): void {
-        // Store original damage if not already stored
-        if (this.originalDamage === null) {
-            // Get the current weapon damage from the first weapon
-            const weapons = this.weaponSystem.getWeapons();
-            if (weapons.length > 0) {
-                this.originalDamage = weapons[0].getDamage();
-            } else {
-                // Fallback to basic damage if no weapons
-                this.originalDamage = GameConstants.WEAPONS.BASIC_DAMAGE;
-            }
-        }
-
         // Cancel existing damage boost timer if it exists
         if (this.damageBoostTimer) {
             this.damageBoostTimer.destroy();
         }
 
-        // Apply damage boost based on original damage, not current damage
-        this.weaponSystem.upgradeWeaponDamage(multiplier);
+        // Apply temporary damage multiplier overlay (non-compounding)
+        this.weaponSystem.setTempDamageMultiplier(multiplier);
 
         // Show the boost timer UI
         this.boostTimerUI.showDamageBoost(5000);
 
-        // Create timer to revert damage boost after 5 seconds
+        // Revert after 5 seconds
         this.damageBoostTimer = this.time.delayedCall(5000, () => {
-            this.weaponSystem.upgradeWeaponDamage(1 / multiplier);
-            this.originalDamage = null; // Reset original damage tracking
+            this.weaponSystem.setTempDamageMultiplier(1);
             this.showFloatingText(
                 "Damage Boost Ended",
                 this.player.x,
@@ -685,4 +968,3 @@ export class Game extends Scene {
         this.events.removeAllListeners();
     }
 }
-

@@ -7,6 +7,9 @@ export class GameUI {
     private timerText: Phaser.GameObjects.Text;
     private scene: Phaser.Scene;
     private gameTime: number;
+    private skillCooldownArc: Phaser.GameObjects.Graphics | null = null;
+    private skillCooldownLabel: Phaser.GameObjects.Text | null = null;
+    private killstreakText: Phaser.GameObjects.Text | null = null;
 
     constructor(scene: Phaser.Scene) {
         this.scene = scene;
@@ -57,6 +60,19 @@ export class GameUI {
             callbackScope: this,
             loop: true
         });
+
+        // Create skill cooldown UI (top-left below bars)
+        this.skillCooldownArc = this.scene.add.graphics();
+        this.skillCooldownArc.setScrollFactor(0);
+        this.skillCooldownArc.setVisible(false);
+        this.skillCooldownLabel = this.scene.add.text(padding + 60, padding + 100, '', {
+            fontSize: '14px', color: '#ffeb99', stroke: '#000000', strokeThickness: 3
+        }).setScrollFactor(0).setVisible(false);
+
+        // Killstreak indicator (top-left)
+        this.killstreakText = this.scene.add.text(padding, padding + 140, '', {
+            fontSize: '16px', color: '#ffffff', stroke: '#000000', strokeThickness: 4
+        }).setScrollFactor(0).setVisible(false);
     }
 
     private updateTimer(): void {
@@ -115,10 +131,63 @@ export class GameUI {
         this.experienceBar.destroy();
         this.levelText.destroy();
         this.timerText.destroy();
+        this.skillCooldownArc?.destroy();
+        this.skillCooldownLabel?.destroy();
+        this.killstreakText?.destroy();
     }
 
     // Getter for gameTime to make it accessible from outside
     public getGameTime(): number {
         return this.gameTime;
     }
-} 
+
+    // Update or hide a small circular cooldown indicator
+    public updateSkillCooldown(remainingMs: number, totalMs: number): void {
+        if (!this.skillCooldownArc || !this.skillCooldownLabel) return;
+        const padding = 16;
+        const x = padding + 40;
+        const y = padding + 100;
+        if (remainingMs <= 0 || totalMs <= 0) {
+            this.skillCooldownArc.setVisible(false);
+            this.skillCooldownLabel.setVisible(false);
+            return;
+        }
+        const frac = Phaser.Math.Clamp(remainingMs / totalMs, 0, 1);
+        this.skillCooldownArc.clear();
+        // background circle
+        this.skillCooldownArc.fillStyle(0x222222, 0.6);
+        this.skillCooldownArc.fillCircle(x, y, 18);
+        // border
+        this.skillCooldownArc.lineStyle(2, 0xffffff, 0.8);
+        this.skillCooldownArc.strokeCircle(x, y, 18);
+        // arc from -90 degrees clockwise
+        this.skillCooldownArc.beginPath();
+        this.skillCooldownArc.lineStyle(4, 0xffaa00, 1);
+        const start = Phaser.Math.DegToRad(-90);
+        const end = start + Math.PI * 2 * frac;
+        this.skillCooldownArc.arc(x, y, 16, start, end, false);
+        this.skillCooldownArc.strokePath();
+        this.skillCooldownArc.setVisible(true);
+
+        const secs = Math.ceil(remainingMs / 100) / 10; // 0.1s precision
+        this.skillCooldownLabel.setPosition(x + 20, y - 8);
+        this.skillCooldownLabel.setText(`${secs.toFixed(1)}s`);
+        this.skillCooldownLabel.setVisible(true);
+    }
+
+    public updateKillstreak(multiplier: number, perk?: 'damage' | 'xp' | 'speed'): void {
+        if (!this.killstreakText) return;
+        if (multiplier <= 1) {
+            this.killstreakText.setVisible(false);
+            return;
+        }
+        const label = perk ? perk.toUpperCase() : 'COMBO';
+        this.killstreakText.setText(`${label} x${multiplier}`);
+        let color = '#ffffff';
+        if (perk === 'damage') color = '#ff5555';
+        if (perk === 'xp') color = '#ffd54f';
+        if (perk === 'speed') color = '#66ccff';
+        this.killstreakText.setColor(color);
+        this.killstreakText.setVisible(true);
+    }
+}

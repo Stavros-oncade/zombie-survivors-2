@@ -34,6 +34,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
                 return 'enemy_tank';
             case EnemyType.FAST:
                 return 'enemy_fast';
+            case EnemyType.RANGED:
+                return 'enemy';
+            case EnemyType.CARRIER:
+                return 'enemy';
+            case EnemyType.TOXIC:
+                return 'enemy_tank';
             default:
                 return 'enemy';
         }
@@ -67,6 +73,18 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
                 this.health = GameConstants.ENEMIES.BASE_HEALTH * 2;
                 this.speed = GameConstants.ENEMIES.INITIAL_SPEED * 0.7;
                 this.damage = 9;
+                this.experienceValue = 35;
+                break;
+            case EnemyType.CARRIER:
+                this.health = GameConstants.ENEMIES.BASE_HEALTH;
+                this.speed = GameConstants.ENEMIES.INITIAL_SPEED * 0.8; // 20% slower
+                this.damage = 6;
+                this.experienceValue = 25;
+                break;
+            case EnemyType.TOXIC:
+                this.health = GameConstants.ENEMIES.BASE_HEALTH * 1.5;
+                this.speed = GameConstants.ENEMIES.INITIAL_SPEED * 0.6;
+                this.damage = 7;
                 this.experienceValue = 35;
                 break;
             default: // BASIC
@@ -109,6 +127,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
                     fx.reset();
                 }
             });
+        }
+        
+        // Hit number (juice) - occasional to reduce clutter
+        if (this.scene && Math.random() < 0.3) {
+            const txt = this.scene.add.text(this.x, this.y - 20, `-${Math.round(amount)}`, {
+                fontSize: '14px', color: '#ff4444', stroke: '#000000', strokeThickness: 2
+            }).setDepth(1000);
+            this.scene.tweens.add({ targets: txt, y: this.y - 40, alpha: 0, duration: 500, onComplete: () => txt.destroy() });
         }
         
         if (this.health <= 0) {

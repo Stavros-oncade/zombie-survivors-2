@@ -37,7 +37,10 @@ export interface UpgradeOption {
 export enum EnemyType {
     BASIC = 'basic',
     FAST = 'fast',
-    TANK = 'tank'
+    TANK = 'tank',
+    RANGED = 'ranged',
+    CARRIER = 'carrier',
+    TOXIC = 'toxic'
 }
 
 export enum PickupType {

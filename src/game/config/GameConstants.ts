@@ -2,6 +2,7 @@ export const GameConstants = {
     PLAYER: {
         INITIAL_HEALTH: 100,
         MOVEMENT_SPEED: 200,
+        MAX_MOVEMENT_SPEED: 400,
         INITIAL_WEAPONS: ['basicWeapon']
     },
     ENEMIES: {
@@ -10,7 +11,7 @@ export const GameConstants = {
         BASE_HEALTH: 40,
         INITIAL_SPAWN_DELAY: 2000,
         MIN_SPAWN_DELAY: 500,
-        PICKUP_DROP_RATE: 0.40
+        PICKUP_DROP_RATE: 0.15
     },
     WEAPONS: {
         BASIC_DAMAGE: 20,
@@ -18,7 +19,7 @@ export const GameConstants = {
         BASIC_PROJECTILE_SPEED: 500
     },
     EXPERIENCE: {
-        BASE_XP_REQUIREMENT: 100,
+        BASE_XP_REQUIREMENT: 200,
         XP_SCALING_FACTOR: 1.5
     }
-}; 
+};

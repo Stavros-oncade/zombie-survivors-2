@@ -127,7 +127,17 @@ export class LevelUpSelection extends Scene {
                     }
                 });
 
+            // Icon (if available)
+            const iconKey = this.getIconKeyForUpgrade(upgrade);
+            let icon: GameObjects.Image | null = null;
+            const iconX = isMobile ? 40 : 40;
+            const iconY = 40;
+            if (iconKey && this.textures.exists(iconKey)) {
+                icon = this.add.image(iconX, iconY, iconKey).setOrigin(0.5).setDisplaySize(48, 48);
+            }
+
             // Create title for the option
+            const rarityColor = this.getRarityColorFromName(upgrade.name);
             const title = this.add
                 .text(optionWidth / 2, 30, upgrade.name, {
                     fontFamily: "Arial",
@@ -138,6 +148,9 @@ export class LevelUpSelection extends Scene {
                     align: "center",
                 })
                 .setOrigin(0.5);
+
+            // Rarity underline
+            const underline = this.add.rectangle(optionWidth / 2, 50, optionWidth * 0.6, 2, rarityColor).setOrigin(0.5);
 
             // Get current stats for before/after comparison
             const currentStats = this.getCurrentStats();
@@ -153,7 +166,9 @@ export class LevelUpSelection extends Scene {
             );
 
             // Add all elements to the container
-            container.add([optionBg, title, description]);
+            const toAdd: GameObjects.GameObject[] = [optionBg, title, underline, description];
+            if (icon) toAdd.push(icon);
+            container.add(toAdd);
             this.upgradeOptions.push(container);
         });
     }
@@ -257,6 +272,36 @@ export class LevelUpSelection extends Scene {
                 wordWrap: { width: optionWidth - 20 },
             })
             .setOrigin(0.5);
+    }
+
+    private getIconKeyForUpgrade(upgrade: Upgrade): string | null {
+        // For relics: id starts with 'relic_'
+        if (upgrade.id.startsWith('relic_')) {
+            return upgrade.id; // expects keys like 'relic_greed'
+        }
+        switch (upgrade.id) {
+            case 'piercing_shot': return 'upgrade_piercing';
+            case 'explosive_burst': return 'upgrade_explosive';
+            case 'projectile_speed': return 'upgrade_projectile';
+            case 'weapon_damage': return 'upgrade_weapon_damage';
+            case 'weapon_speed': return 'upgrade_weapon_speed';
+            case 'speed_boost': return 'upgrade_speed';
+            case 'health_boost': return 'upgrade_health';
+            default: return null;
+        }
+    }
+
+    private getRarityColorFromName(name: string): number {
+        // Expect format: Name [rarity]
+        const m = name.match(/\[(common|rare|epic|legendary)\]/i);
+        const r = m ? m[1].toLowerCase() : '';
+        switch (r) {
+            case 'common': return 0xcccccc;
+            case 'rare': return 0x4da6ff;
+            case 'epic': return 0xbf5af2;
+            case 'legendary': return 0xffc107;
+            default: return 0xffffff;
+        }
     }
 
     private selectUpgrade(upgrade: Upgrade): void {
