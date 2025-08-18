@@ -1,6 +1,4 @@
-export type CharacterId = 'soldier' | 'scout' | 'demolitionist';
-export type DefensiveSkillId = 'dash' | 'barrier' | 'repulse';
-export type KillstreakPerkId = 'damage' | 'xp' | 'speed';
+import { CharacterId, DefensiveSkillId, KillstreakPerkId } from '../types/GameTypes';
 
 type CharacterPreset = {
   id: CharacterId;
@@ -9,26 +7,26 @@ type CharacterPreset = {
 };
 
 export const CHARACTERS: CharacterPreset[] = [
-  { id: 'soldier', name: 'Soldier', description: '+20% max HP' },
-  { id: 'scout', name: 'Scout', description: '+10% movement speed toward cap' },
-  { id: 'demolitionist', name: 'Demolitionist', description: 'Start with Explosive Burst' },
+  { id: CharacterId.SOLDIER, name: 'Soldier', description: '+20% max HP' },
+  { id: CharacterId.SCOUT, name: 'Scout', description: '+10% movement speed toward cap' },
+  { id: CharacterId.DEMOLITIONIST, name: 'Demolitionist', description: 'Start with Explosive Burst' },
 ];
 
 export class LoadoutManager {
   private static instance: LoadoutManager;
-  private selected: CharacterId = 'soldier';
-  private defensiveSkill: DefensiveSkillId = 'dash';
-  private killstreakPerk: KillstreakPerkId = 'damage';
+  private selected: CharacterId = CharacterId.SOLDIER;
+  private defensiveSkill: DefensiveSkillId = DefensiveSkillId.DASH;
+  private killstreakPerk: KillstreakPerkId = KillstreakPerkId.DAMAGE;
 
   private constructor() {
     const saved = localStorage.getItem('zs2_loadout_character');
-    if (saved === 'soldier' || saved === 'scout' || saved === 'demolitionist') {
-      this.selected = saved;
+    if (saved === CharacterId.SOLDIER || saved === CharacterId.SCOUT || saved === CharacterId.DEMOLITIONIST) {
+      this.selected = saved as CharacterId;
     }
     const ds = localStorage.getItem('zs2_loadout_defensive');
-    if (ds === 'dash' || ds === 'barrier' || ds === 'repulse') this.defensiveSkill = ds as DefensiveSkillId;
+    if (ds === DefensiveSkillId.DASH || ds === DefensiveSkillId.BARRIER || ds === DefensiveSkillId.REPULSE) this.defensiveSkill = ds as DefensiveSkillId;
     const kp = localStorage.getItem('zs2_loadout_killstreak');
-    if (kp === 'damage' || kp === 'xp' || kp === 'speed') this.killstreakPerk = kp;
+    if (kp === KillstreakPerkId.DAMAGE || kp === KillstreakPerkId.XP || kp === KillstreakPerkId.SPEED) this.killstreakPerk = kp as KillstreakPerkId;
   }
 
   static getInstance(): LoadoutManager {

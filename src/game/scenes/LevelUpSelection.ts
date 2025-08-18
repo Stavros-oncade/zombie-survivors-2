@@ -1,8 +1,9 @@
 import { Scene, GameObjects } from "phaser";
 import { Player } from "../entities/Player";
-import { Upgrade, UpgradeStats } from "../types/GameTypes";
+import { Upgrade, UpgradeStats, UpgradeId } from "../types/GameTypes";
 import { GameConstants } from "../config/GameConstants";
 import { Game } from "./Game";
+import { SceneKey } from "../config/SceneKeys";
 
 export class LevelUpSelection extends Scene {
     private background: GameObjects.Rectangle;
@@ -179,7 +180,7 @@ export class LevelUpSelection extends Scene {
         let projectileSpeed = GameConstants.WEAPONS.BASIC_PROJECTILE_SPEED;
 
         // Try to get current weapon stats if available
-        const gameScene = this.scene.manager.getScene('Game') as Game;
+        const gameScene = this.scene.manager.getScene(SceneKey.Game) as Game;
         if (gameScene && gameScene.getWeaponSystem) {
             const weaponSystem = gameScene.getWeaponSystem();
             const weapons = weaponSystem.getWeapons();
@@ -208,19 +209,19 @@ export class LevelUpSelection extends Scene {
         const afterStats: UpgradeStats = { ...currentStats };
 
         switch (upgrade.id) {
-            case "health_boost":
+            case UpgradeId.HEALTH_BOOST:
                 afterStats.health = Math.round(currentStats.health * 1.2);
                 break;
-            case "speed_boost":
+            case UpgradeId.SPEED_BOOST:
                 afterStats.speed = Math.round(currentStats.speed * 1.15);
                 break;
-            case "weapon_damage":
+            case UpgradeId.WEAPON_DAMAGE:
                 afterStats.weaponDamage = Math.round(currentStats.weaponDamage * 1.25);
                 break;
-            case "weapon_speed":
+            case UpgradeId.WEAPON_SPEED:
                 afterStats.weaponSpeed = Math.round(currentStats.weaponSpeed * 1.2);
                 break;
-            case "projectile_speed":
+            case UpgradeId.PROJECTILE_SPEED:
                 afterStats.projectileSpeed = Math.round(currentStats.projectileSpeed * 1.3);
                 break;
         }
@@ -238,22 +239,22 @@ export class LevelUpSelection extends Scene {
         let description = "";
 
         switch (upgrade.id) {
-            case "health_boost":
+            case UpgradeId.HEALTH_BOOST:
                 description = `Health: ${Math.round(currentStats.health)} → ${Math.round(afterStats.health)}`;
                 break;
-            case "speed_boost":
+            case UpgradeId.SPEED_BOOST:
                 description = `Speed: ${Math.round(currentStats.speed)} → ${Math.round(afterStats.speed)}`;
                 break;
-            case "weapon_damage":
+            case UpgradeId.WEAPON_DAMAGE:
                 description = `Damage: ${Math.round(currentStats.weaponDamage)} → ${Math.round(afterStats.weaponDamage)}`;
                 break;
-            case "weapon_speed":
+            case UpgradeId.WEAPON_SPEED:
                 description = `Attack Speed: ${Math.round(currentStats.weaponSpeed)} → ${Math.round(afterStats.weaponSpeed)}`;
                 break;
-            case "projectile_speed":
+            case UpgradeId.PROJECTILE_SPEED:
                 description = `Projectile Speed: ${Math.round(currentStats.projectileSpeed)} → ${Math.round(afterStats.projectileSpeed)}`;
                 break;
-            case "health_regen":
+            case UpgradeId.HEALTH_REGEN:
                 description = "Regenerate 1% of max health every 5 seconds";
                 break;
             default:
@@ -333,7 +334,7 @@ export class LevelUpSelection extends Scene {
 
     private resumeGame(): void {
         // Emit event directly to the game scene
-        this.scene.get('Game').events.emit("level_up_selection_complete", this.selectedUpgrade);
+        this.scene.get(SceneKey.Game).events.emit("level_up_selection_complete", this.selectedUpgrade);
         
         // Clean up the scene before stopping it
         this.destroy();

@@ -1,5 +1,6 @@
 import { PickupType } from '../types/GameTypes';
 import { Game } from '../scenes/Game';
+import { SceneKey } from '../config/SceneKeys';
 
 export class Pickup extends Phaser.Physics.Arcade.Sprite {
     private pickupType: PickupType;
@@ -109,7 +110,7 @@ export class Pickup extends Phaser.Physics.Arcade.Sprite {
             duration: 200,
             onComplete: () => {
                 // Remove from collected pickups set if the scene is a Game scene
-                if (this.scene.scene.key === 'Game' && this.scene instanceof Game) {
+                if (this.scene.scene.key === SceneKey.Game && this.scene instanceof Game) {
                     this.scene.removeFromCollectedPickups(this);
                 }
                 this.destroy();

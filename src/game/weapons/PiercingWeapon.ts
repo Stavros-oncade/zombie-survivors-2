@@ -1,12 +1,13 @@
 import { Scene } from 'phaser';
 import { Enemy } from '../entities/Enemy';
 import { ExplosionConfig } from '../config/ExplosionConfig';
+import { IWeapon } from './IWeapon';
 
 // Assets needed:
 // - projectile sprite for piercing shot (e.g., 'proj_piercing.png')
 //   Fallback: uses existing 'projectile' if custom asset is not loaded.
 
-export class PiercingWeapon {
+export class PiercingWeapon implements IWeapon {
   private damage: number;
   private tempDamageMultiplier: number = 1;
   private attackSpeed: number; // shots per second
@@ -85,4 +86,8 @@ export class PiercingWeapon {
   public setTempDamageMultiplier(multiplier: number): void {
     this.tempDamageMultiplier = Math.max(0, multiplier);
   }
+
+  public getAttackSpeed(): number { return this.attackSpeed; }
+  public getProjectileSpeed(): number { return this.projectileSpeed; }
+  public getLevel(): number { return this.level; }
 }

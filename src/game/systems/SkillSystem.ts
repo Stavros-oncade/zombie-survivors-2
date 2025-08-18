@@ -1,6 +1,6 @@
 import { Game } from '../scenes/Game';
-
-export type DefensiveSkillId = 'dash' | 'barrier' | 'repulse';
+import { DefensiveSkillId, GasCloudTag } from '../types/GameTypes';
+import { Player } from '../entities/Player';
 
 export class SkillSystem {
   private game: Game;
@@ -9,7 +9,6 @@ export class SkillSystem {
   private cooldownMs = 1200;
   private lastUsed = -9999;
   private barrierActive = false;
-  private barrierSprite: Phaser.GameObjects.Graphics | null = null;
 
   constructor(game: Game, skill: DefensiveSkillId) {
     this.game = game;
@@ -33,17 +32,17 @@ export class SkillSystem {
     const cd = Math.max(400, this.cooldownMs - (this.level - 1) * 150);
     if (now - this.lastUsed < cd) return false;
     this.lastUsed = now;
-    if (this.skill === 'dash') this.activateDash();
-    if (this.skill === 'barrier') this.activateBarrier();
-    if (this.skill === 'repulse') this.activateRepulse();
+    if (this.skill === DefensiveSkillId.DASH) this.activateDash();
+    if (this.skill === DefensiveSkillId.BARRIER) this.activateBarrier();
+    if (this.skill === DefensiveSkillId.REPULSE) this.activateRepulse();
     return true;
   }
 
   private activateDash() {
-    const player: any = (this.game as any).player;
+    const player: Player = this.game.getPlayer();
     // Velocity burst in movement direction, brief i-frames
-    const cursors = (this.game as any).cursors as Phaser.Types.Input.Keyboard.CursorKeys;
-    const wasd = (this.game as any).wasdKeys as any;
+    const cursors = this.game.getCursors();
+    const wasd = this.game.getWasdKeys();
     const dir = new Phaser.Math.Vector2(0,0);
     const push = 600 + (this.level - 1) * 80;
     if (cursors?.left?.isDown || wasd?.left?.isDown) dir.x = -1;
@@ -54,32 +53,30 @@ export class SkillSystem {
     dir.normalize();
     (player.body as Phaser.Physics.Arcade.Body).setVelocity(dir.x * push, dir.y * push);
     // i-frames
-    (player as any).immunityTimer?.destroy();
-    (player as any).immunityTimer = this.game.time.addEvent({ delay: 250 + (this.level-1)*40, callback: () => { (player as any).lastDamageSource = null; }});
+    player.grantImmunity(250 + (this.level - 1) * 40);
     this.game.cameras.main.shake(80, 0.003);
   }
 
   private activateBarrier() {
     if (this.barrierActive) return;
     this.barrierActive = true;
-    const player: any = (this.game as any).player;
+    const player: Player = this.game.getPlayer();
     const g = this.game.add.graphics();
     g.lineStyle(3, 0x00ffaa, 0.9);
     g.strokeCircle(0, 0, 26 + this.level * 2);
     g.setDepth(999);
     g.setScrollFactor(1);
-    this.barrierSprite = g;
+    // Follow player until duration ends
     g.x = player.x; g.y = player.y;
     const follow = this.game.time.addEvent({ delay: 16, loop: true, callback: () => { if (!g.active) return; g.x = player.x; g.y = player.y; }});
     const dur = 1200 + (this.level-1)*200;
     this.game.time.delayedCall(dur, () => { g.destroy(); follow.destroy(); this.barrierActive = false; });
     // On hit while active, reduce damage (handled in Player? For prototype, grant i-frames window)
-    (player as any).immunityTimer?.destroy();
-    (player as any).immunityTimer = this.game.time.addEvent({ delay: dur, callback: () => { (player as any).lastDamageSource = null; }});
+    player.grantImmunity(dur);
   }
 
   private activateRepulse() {
-    const player: any = (this.game as any).player;
+    const player: Player = this.game.getPlayer();
     const px = player.x, py = player.y;
     const radius = 220 + (this.level - 1) * 25; // grows slightly with level
     const maxForce = 900 + (this.level - 1) * 120; // stronger with level
@@ -103,40 +100,43 @@ export class SkillSystem {
     this.game.cameras.main.shake(100, 0.004);
 
     // Apply pure knockback (no damage) to nearby enemies
-    const enemiesGroup = (this.game as any).enemies as Phaser.Physics.Arcade.Group;
+    const enemiesGroup = this.game.getEnemiesGroup();
     if (enemiesGroup) {
-      const enemies = enemiesGroup.getChildren() as any[];
-      enemies.forEach((e: any) => {
+      const enemies = enemiesGroup.getChildren() as Phaser.GameObjects.GameObject[];
+      enemies.forEach((obj) => {
+        const e = obj as unknown as { x: number; y: number; active: boolean; applyKnockback?: (force: number, angle: number) => void };
         if (!e || !e.active) return;
-        const ex = e.x as number; const ey = e.y as number;
+        const ex = e.x; const ey = e.y;
         const d = Phaser.Math.Distance.Between(px, py, ex, ey);
         if (d <= radius) {
           const angle = Phaser.Math.Angle.Between(px, py, ex, ey);
           const force = Math.max(0, maxForce * (1 - d / radius));
-          if (typeof e.applyKnockback === 'function') e.applyKnockback(force, angle);
+          e.applyKnockback?.(force, angle);
         }
       });
     }
 
     // Clear toxic gas clouds within radius
-    const gasSet = (this.game as any).__gasClouds as Set<any> | undefined;
+    const gasSet = this.game.getGasClouds();
     if (gasSet && gasSet.size > 0) {
-      const toRemove: any[] = [];
-      gasSet.forEach((g: any) => {
-        const gx = (g as any).__gasX ?? 0;
-        const gy = (g as any).__gasY ?? 0;
-        const r = (g as any).__gasRadius ?? 0;
+      const toRemove: Array<Phaser.GameObjects.Graphics & GasCloudTag> = [];
+      gasSet.forEach((g) => {
+        const gx = g.__gasX ?? 0;
+        const gy = g.__gasY ?? 0;
+        const r = g.__gasRadius ?? 0;
         const d = Phaser.Math.Distance.Between(px, py, gx, gy);
         if (d <= radius + r) {
           toRemove.push(g);
         }
       });
-      toRemove.forEach((g: any) => {
+      toRemove.forEach((g) => {
         try {
-          (g as any).__gasTick?.destroy?.();
-        } catch {}
-        if (g?.destroy) g.destroy();
-        gasSet.delete(g);
+          g.__gasTick?.destroy?.();
+        } catch (err) {
+          // ignore
+        }
+        g.destroy();
+        this.game.unregisterGasCloud(g);
       });
     }
   }

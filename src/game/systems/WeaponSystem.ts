@@ -6,11 +6,12 @@ import { Enemy } from '../entities/Enemy';
 import { PiercingWeapon } from '../weapons/PiercingWeapon';
 import { ExplosiveWeapon } from '../weapons/ExplosiveWeapon';
 import { EvolvedInfernoLance } from '../weapons/EvolvedInfernoLance';
+import { IWeapon } from '../weapons/IWeapon';
 
 export class WeaponSystem {
     private scene: Scene;
     private player: Player;
-    private weapons: (Weapon | PiercingWeapon | ExplosiveWeapon | EvolvedInfernoLance)[];
+    private weapons: IWeapon[];
     private enemies: Phaser.Physics.Arcade.Group;
 
     constructor(scene: Scene, player: Player, enemies: Phaser.Physics.Arcade.Group) {
@@ -33,8 +34,7 @@ export class WeaponSystem {
         
         if (activeEnemies.length > 0) {
             this.weapons.forEach(weapon => {
-                // All weapon classes share a compatible fire signature
-                (weapon as any).fire(this.scene, this.player, activeEnemies);
+                weapon.fire(this.scene, this.player, activeEnemies);
             });
         }
     }
@@ -45,25 +45,23 @@ export class WeaponSystem {
     }
 
     public upgradeWeaponDamage(multiplier: number): void {
-        this.weapons.forEach(weapon => (weapon as any).upgradeDamage?.(multiplier));
+        this.weapons.forEach(weapon => weapon.upgradeDamage(multiplier));
     }
 
     public upgradeWeaponSpeed(multiplier: number): void {
-        this.weapons.forEach(weapon => (weapon as any).upgradeSpeed?.(multiplier));
+        this.weapons.forEach(weapon => weapon.upgradeSpeed(multiplier));
     }
 
     public upgradeProjectileSpeed(multiplier: number): void {
-        this.weapons.forEach(weapon => (weapon as any).upgradeProjectileSpeed?.(multiplier));
+        this.weapons.forEach(weapon => weapon.upgradeProjectileSpeed(multiplier));
     }
 
     // Temporary damage overlay control for timed buffs (non-compounding)
     public setTempDamageMultiplier(multiplier: number): void {
-        this.weapons.forEach(weapon => (weapon as any).setTempDamageMultiplier?.(multiplier));
+        this.weapons.forEach(weapon => weapon.setTempDamageMultiplier(multiplier));
     }
 
-    public getWeapons(): Weapon[] {
-        return this.weapons as any;
-    }
+    public getWeapons(): IWeapon[] { return this.weapons; }
 
     // New: unlock or upgrade specific weapons
     public unlockPiercing(): void {
@@ -99,11 +97,11 @@ export class WeaponSystem {
     }
 
     private checkEvolution(): void {
-        const hasPiercing = this.weapons.find(w => w instanceof PiercingWeapon) as any;
-        const hasExplosive = this.weapons.find(w => w instanceof ExplosiveWeapon) as any;
+        const hasPiercing = this.weapons.find(w => w instanceof PiercingWeapon) as (PiercingWeapon & IWeapon) | undefined;
+        const hasExplosive = this.weapons.find(w => w instanceof ExplosiveWeapon) as (ExplosiveWeapon & IWeapon) | undefined;
         const hasEvolved = this.weapons.find(w => w instanceof EvolvedInfernoLance);
         if (hasEvolved) return;
-        if (hasPiercing && hasExplosive && hasPiercing.level >= 2 && hasExplosive.level >= 2) {
+        if (hasPiercing && hasExplosive && hasPiercing.getLevel() >= 2 && hasExplosive.getLevel() >= 2) {
             // Remove base weapons and add evolved
             this.weapons = this.weapons.filter(w => !(w instanceof PiercingWeapon) && !(w instanceof ExplosiveWeapon));
             this.weapons.push(new EvolvedInfernoLance(this.scene, {

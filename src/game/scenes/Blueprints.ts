@@ -1,8 +1,9 @@
 import { Scene } from 'phaser';
 import { BLUEPRINTS, BlueprintSystem } from '../systems/BlueprintSystem';
+import { SceneKey } from '../config/SceneKeys';
 
 export class Blueprints extends Scene {
-  constructor() { super('Blueprints'); }
+  constructor() { super(SceneKey.Blueprints); }
   private pointsText!: Phaser.GameObjects.Text;
 
   create() {
@@ -49,6 +50,6 @@ export class Blueprints extends Scene {
     const back = this.add.text(w/2, y + 40, 'Back', {
       fontFamily: 'Arial Black', fontSize: '28px', color: '#ffffff', stroke: '#000000', strokeThickness: 6
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
-    .on('pointerdown', () => this.scene.start('MainMenu'));
+    .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
   }
 }

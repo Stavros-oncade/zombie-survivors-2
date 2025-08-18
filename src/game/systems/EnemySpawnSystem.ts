@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GameConstants } from '../config/GameConstants';
-import { EnemyType } from '../types/GameTypes';
+import { EnemyType, SpawnState, ClusterType } from '../types/GameTypes';
 import { Enemy } from '../entities/Enemy';
 import { EliteEnemy } from '../entities/EliteEnemy';
 import { BossEnemy } from '../entities/BossEnemy';
@@ -32,7 +32,7 @@ interface WaveStateDisplayConfig {
             carrier?: number;
             toxic?: number;
         };
-        clusterType: 'random' | 'sameSide' | 'pincer' | 'around';
+        clusterType: ClusterType;
         duration: number;
         // Add display configuration
         display?: WaveStateDisplayConfig;
@@ -43,7 +43,7 @@ export class EnemySpawnSystem {
     private enemies: Phaser.Physics.Arcade.Group;
     private spawnTimer!: Phaser.Time.TimerEvent;
     private stateTimer!: Phaser.Time.TimerEvent;
-    private spawnState!: string;
+    private spawnState!: SpawnState;
     private difficultyLevel: number = 0;
     private difficultyTimer!: Phaser.Time.TimerEvent;
     private eliteTimer!: Phaser.Time.TimerEvent;
@@ -51,9 +51,9 @@ export class EnemySpawnSystem {
     private bossTimer!: Phaser.Time.TimerEvent;
     private bossAlive: boolean = false;
 
-    private readonly stateConfigs: Record<string, SpawnStateConfig>;
-    private readonly stateNames: string[];
-    private readonly baseStateConfigs: Record<string, SpawnStateConfig>;
+    private readonly stateConfigs: Record<SpawnState, SpawnStateConfig>;
+    private readonly stateNames: SpawnState[];
+    private readonly baseStateConfigs: Record<SpawnState, SpawnStateConfig>;
 
     // Default display configurations for each state
     private readonly defaultDisplayConfigs: Record<string, WaveStateDisplayConfig> = {
@@ -90,74 +90,74 @@ export class EnemySpawnSystem {
     constructor(
         scene: Phaser.Scene,
         enemies: Phaser.Physics.Arcade.Group,
-        customConfigs?: Partial<Record<string, SpawnStateConfig>>
+        customConfigs?: Partial<Record<SpawnState, SpawnStateConfig>>
     ) {
         this.scene = scene;
         this.enemies = enemies;
 
-        const defaultConfigs: Record<string, SpawnStateConfig> = {
-            normal: {
+        const defaultConfigs: Record<SpawnState, SpawnStateConfig> = {
+            [SpawnState.NORMAL]: {
                 spawnDelay: GameConstants.ENEMIES.INITIAL_SPAWN_DELAY,
                 spawnCount: 1,
                 enemyChances: { fast: 0.4, tank: 0.2, ranged: 0.25, carrier: 0.05 },
-                clusterType: 'random',
+                clusterType: ClusterType.RANDOM,
                 duration: 10000,
                 display: this.defaultDisplayConfigs.normal
             },
-            peak: {
+            [SpawnState.PEAK]: {
                 spawnDelay: GameConstants.ENEMIES.MIN_SPAWN_DELAY,
                 spawnCount: 3,
                 enemyChances: { fast: 0.7, tank: 0.5, ranged: 0.4, carrier: 0.08 },
-                clusterType: 'pincer',
+                clusterType: ClusterType.PINCER,
                 duration: 6000,
                 display: this.defaultDisplayConfigs.peak
             },
-            cooldown: {
+            [SpawnState.COOLDOWN]: {
                 spawnDelay: GameConstants.ENEMIES.INITIAL_SPAWN_DELAY * 2,
                 spawnCount: 2,
                 enemyChances: { fast: 0.5, tank: 0.4, ranged: 0.3, carrier: 0.06 },
-                clusterType: 'sameSide',
+                clusterType: ClusterType.SAME_SIDE,
                 duration: 8000,
                 display: this.defaultDisplayConfigs.cooldown
             },
-            ranged_pack: {
+            [SpawnState.RANGED_PACK]: {
                 spawnDelay: Math.max(600, Math.floor(GameConstants.ENEMIES.INITIAL_SPAWN_DELAY * 0.8)),
                 spawnCount: 6,
                 enemyChances: { fast: 0.05, tank: 0.05, ranged: 0.9, carrier: 0.0 },
-                clusterType: 'sameSide',
+                clusterType: ClusterType.SAME_SIDE,
                 duration: 7000,
                 display: { text: 'Marksmen incoming', color: '#66ccff', fontSize: '34px', glowColor: 0x66ccff, glowIntensity: 5, scale: { from: 0.8, to: 1.1 }, particles: true }
             },
-            carrier_pack: {
+            [SpawnState.CARRIER_PACK]: {
                 spawnDelay: Math.max(700, Math.floor(GameConstants.ENEMIES.INITIAL_SPAWN_DELAY * 0.9)),
                 spawnCount: 5,
                 enemyChances: { fast: 0.05, tank: 0.05, ranged: 0.0, carrier: 0.9 },
-                clusterType: 'sameSide',
+                clusterType: ClusterType.SAME_SIDE,
                 duration: 7000,
                 display: { text: 'Carriers inbound', color: '#99cc66', fontSize: '34px', glowColor: 0x99cc66, glowIntensity: 5, scale: { from: 0.8, to: 1.1 }, particles: true }
             },
-            toxic_pack: {
+            [SpawnState.TOXIC_PACK]: {
                 spawnDelay: Math.max(700, Math.floor(GameConstants.ENEMIES.INITIAL_SPAWN_DELAY * 0.9)),
                 spawnCount: 6,
                 enemyChances: { fast: 0.0, tank: 0.05, ranged: 0.0, carrier: 0.0, toxic: 0.95 },
-                clusterType: 'around',
+                clusterType: ClusterType.AROUND,
                 duration: 7000,
                 display: { text: 'Toxic squad converging', color: '#66ff66', fontSize: '34px', glowColor: 0x66ff66, glowIntensity: 5, scale: { from: 0.8, to: 1.1 }, particles: true }
             }
         };
 
         this.baseStateConfigs = customConfigs 
-            ? { ...defaultConfigs, ...(customConfigs as Record<string, SpawnStateConfig>)} 
+            ? { ...defaultConfigs, ...(customConfigs as Record<SpawnState, SpawnStateConfig>)} 
             : defaultConfigs;
         // copy into mutable stateConfigs
         this.stateConfigs = JSON.parse(JSON.stringify(this.baseStateConfigs));
-        this.stateNames = Object.keys(defaultConfigs);
+        this.stateNames = Object.keys(defaultConfigs) as SpawnState[];
 
         this.initialize();
     }
 
     private initialize(): void {
-        this.spawnState = 'normal';
+        this.spawnState = SpawnState.NORMAL;
         this.applyStateConfig();
         // If tuner requested a start state, switch to it now
         const cfg = SpawningConfig.getInstance();
@@ -237,11 +237,11 @@ export class EnemySpawnSystem {
     }
 
     private switchState(): void {
-        if (this.spawnState === 'normal') {
-            const nextStates = this.stateNames.filter(s => s !== 'normal');
+        if (this.spawnState === SpawnState.NORMAL) {
+            const nextStates = this.stateNames.filter(s => s !== SpawnState.NORMAL);
             this.spawnState = nextStates[Math.floor(Math.random() * nextStates.length)];
         } else {
-            this.spawnState = 'normal';
+            this.spawnState = SpawnState.NORMAL;
         }
         // console.log(`[SpawnState] → ${this.spawnState}`);
         
@@ -260,7 +260,7 @@ export class EnemySpawnSystem {
     }
 
     // Expose a way to force a given spawn state and emit the banner
-    public forceState(stateKey: string): void {
+    public forceState(stateKey: SpawnState): void {
         if (!this.stateNames.includes(stateKey)) return;
         this.spawnState = stateKey;
         const displayConfig = this.getWaveStateDisplayConfig(this.spawnState);
@@ -280,13 +280,13 @@ export class EnemySpawnSystem {
 
     private spawnBatch(cfg: SpawnStateConfig): void {
         switch (cfg.clusterType) {
-            case 'sameSide':
+            case ClusterType.SAME_SIDE:
                 this.spawnClusterSameSide(cfg);
                 break;
-            case 'pincer':
+            case ClusterType.PINCER:
                 this.spawnClusterPincer(cfg);
                 break;
-            case 'around':
+            case ClusterType.AROUND:
                 this.spawnClusterAround(cfg);
                 break;
             default:

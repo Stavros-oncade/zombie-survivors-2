@@ -1,11 +1,12 @@
 import { Scene } from 'phaser';
 import { Enemy } from '../entities/Enemy';
+import { IWeapon } from './IWeapon';
 
 // Assets needed:
 // - explosion sprite or spritesheet (e.g., 'explosion_small.png') for burst VFX.
 //   Fallback: uses a graphics circle if asset not present.
 
-export class ExplosiveWeapon {
+export class ExplosiveWeapon implements IWeapon {
   private damage: number;
   private tempDamageMultiplier: number = 1;
   private attackSpeed: number;
@@ -61,10 +62,15 @@ export class ExplosiveWeapon {
 
   public upgradeDamage(multiplier: number): void { this.damage *= multiplier; }
   public upgradeSpeed(multiplier: number): void { this.attackSpeed *= multiplier; }
+  public upgradeProjectileSpeed(_multiplier: number): void { /* no-op for AoE weapon */ }
   public getDamage(): number { return Math.max(0, this.damage * this.tempDamageMultiplier); }
   public setDamage(v: number): void { this.damage = Math.max(0, v); }
 
   public setTempDamageMultiplier(multiplier: number): void {
     this.tempDamageMultiplier = Math.max(0, multiplier);
   }
+
+  public getAttackSpeed(): number { return this.attackSpeed; }
+  public getProjectileSpeed(): number { return 0; }
+  public getLevel(): number { return this.level; }
 }

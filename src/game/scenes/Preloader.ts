@@ -1,10 +1,11 @@
 import { Scene } from 'phaser';
+import { SceneKey } from '../config/SceneKeys';
 
 export class Preloader extends Scene
 {
     constructor ()
     {
-        super('Preloader');
+        super(SceneKey.Preloader);
     }
 
     init ()
@@ -135,7 +136,7 @@ export class Preloader extends Scene
         // Blueprint drop placeholder
         ensureIcon('blueprint_drop', 0x00bcd4);
 
-        this.scene.start('MainMenu');
+        this.scene.start(SceneKey.MainMenu);
     }
 }
         // Blueprint drop icon

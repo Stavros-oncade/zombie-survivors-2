@@ -1,5 +1,6 @@
 import { Scene } from 'phaser';
 import { Enemy } from '../entities/Enemy';
+import { IWeapon } from './IWeapon';
 import { ExplosionConfig } from '../config/ExplosionConfig';
 
 interface WeaponConfig {
@@ -9,7 +10,7 @@ interface WeaponConfig {
     level: number;
 }
 
-export class Weapon {
+export class Weapon implements IWeapon {
     private damage: number;
     private tempDamageMultiplier: number = 1;
     private attackSpeed: number;
@@ -135,5 +136,9 @@ export class Weapon {
     public setTempDamageMultiplier(multiplier: number): void {
         // Directly set so applying twice with same value doesn't compound
         this.tempDamageMultiplier = Math.max(0, multiplier);
+    }
+
+    public getLevel(): number {
+        return this.level;
     }
 }

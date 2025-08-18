@@ -1,6 +1,5 @@
 import { Game } from '../scenes/Game';
-
-export type RelicRarity = 'common' | 'rare' | 'epic' | 'legendary';
+import { RelicRarity } from '../types/GameTypes';
 
 export type Relic = {
   id: string;
@@ -22,6 +21,7 @@ export class RelicSystem {
 
   public getXPMultiplier(): number { return this.xpMultiplier; }
   public hasRelic(id: string): boolean { return this.acquired.has(id); }
+  public setXPMultiplier(multiplier: number): void { this.xpMultiplier = multiplier; }
 
   public acquireRelic(id: string): void {
     if (this.acquired.has(id)) return;
@@ -49,17 +49,17 @@ export const RELICS: Relic[] = [
     id: 'greed',
     name: 'Greed',
     description: '+25% experience gain from all sources',
-    rarity: 'common',
+    rarity: RelicRarity.COMMON,
     weight: 50,
     apply: (game: Game) => {
-      game.getRelicSystemInternal().xpMultiplier = 1.25;
+      game.getRelicSystemInternal().setXPMultiplier(1.25);
     }
   },
   {
     id: 'celerity',
     name: 'Celerity',
     description: 'Increase movement speed toward cap (+5% asymptotically)',
-    rarity: 'rare',
+    rarity: RelicRarity.RARE,
     weight: 30,
     apply: (game: Game) => {
       game.playerApplyAsymptoticSpeed(1.05);
@@ -69,7 +69,7 @@ export const RELICS: Relic[] = [
     id: 'arsenal',
     name: 'Arsenal',
     description: '+10% attack speed for all weapons',
-    rarity: 'epic',
+    rarity: RelicRarity.EPIC,
     weight: 15,
     apply: (game: Game) => {
       game.getWeaponSystem().upgradeWeaponSpeed(1.1);
@@ -79,7 +79,7 @@ export const RELICS: Relic[] = [
     id: 'warp_coils',
     name: 'Warp Coils',
     description: '+20% projectile speed',
-    rarity: 'common',
+    rarity: RelicRarity.COMMON,
     weight: 40,
     apply: (game: Game) => {
       game.getWeaponSystem().upgradeProjectileSpeed(1.2);
@@ -89,7 +89,7 @@ export const RELICS: Relic[] = [
     id: 'vitality',
     name: 'Vitality',
     description: '+10% max health',
-    rarity: 'common',
+    rarity: RelicRarity.COMMON,
     weight: 35,
     apply: (game: Game) => {
       game.playerAdjustMaxHealth(1.1);
@@ -99,7 +99,7 @@ export const RELICS: Relic[] = [
     id: 'sharpshooter',
     name: 'Sharpshooter',
     description: '+15% weapon damage',
-    rarity: 'rare',
+    rarity: RelicRarity.RARE,
     weight: 30,
     apply: (game: Game) => {
       game.getWeaponSystem().upgradeWeaponDamage(1.15);
@@ -109,7 +109,7 @@ export const RELICS: Relic[] = [
     id: 'overclock',
     name: 'Overclock',
     description: '+15% attack speed',
-    rarity: 'epic',
+    rarity: RelicRarity.EPIC,
     weight: 20,
     apply: (game: Game) => {
       game.getWeaponSystem().upgradeWeaponSpeed(1.15);

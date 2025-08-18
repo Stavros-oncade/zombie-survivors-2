@@ -1,18 +1,20 @@
 import { Scene } from 'phaser';
 import { Enemy } from '../entities/Enemy';
 import { ExplosionConfig } from '../config/ExplosionConfig';
+import { IWeapon } from './IWeapon';
 
 // Assets needed:
 // - evolved projectile sprite (e.g., 'proj_inferno.png')
 // - optional special explosion VFX (e.g., 'explosion_inferno.png')
 
-export class EvolvedInfernoLance {
+export class EvolvedInfernoLance implements IWeapon {
   private damage: number;
   private tempDamageMultiplier: number = 1;
   private attackSpeed: number;
   private projectileSpeed: number;
   private lastFired: number = 0;
   private pierceCount: number;
+  private level: number = 1;
 
   constructor(_scene: Scene, config: { damage: number; attackSpeed: number; projectileSpeed: number; pierceCount?: number }) {
     this.damage = config.damage;
@@ -66,6 +68,7 @@ export class EvolvedInfernoLance {
   }
 
   public upgrade(): void {
+    this.level += 1;
     this.damage *= 1.2;
     this.attackSpeed *= 1.15;
     this.pierceCount += 1;
@@ -76,10 +79,10 @@ export class EvolvedInfernoLance {
   public upgradeProjectileSpeed(multiplier: number): void { this.projectileSpeed *= multiplier; }
   public getDamage(): number { return Math.max(0, this.damage * this.tempDamageMultiplier); }
   public setDamage(v: number): void { this.damage = Math.max(0, v); }
-
-  public setTempDamageMultiplier(multiplier: number): void {
-    this.tempDamageMultiplier = Math.max(0, multiplier);
-  }
+  public getAttackSpeed(): number { return this.attackSpeed; }
+  public getProjectileSpeed(): number { return this.projectileSpeed; }
+  public getLevel(): number { return this.level; }
+  public setTempDamageMultiplier(multiplier: number): void { this.tempDamageMultiplier = Math.max(0, multiplier); }
 }
 
 function createMiniExplosion(scene: Scene, x: number, y: number) {

@@ -1,8 +1,6 @@
 import { Enemy } from './Enemy';
-import { EnemyType } from '../types/GameTypes';
+import { EnemyType, RangedVariant } from '../types/GameTypes';
 import { ExplosionConfig } from '../config/ExplosionConfig';
-
-type RangedVariant = 'single' | 'burst' | 'arc';
 
 export class RangedEnemy extends Enemy {
   private minRange = 320;
@@ -11,7 +9,7 @@ export class RangedEnemy extends Enemy {
   private fireInterval = 1000; // ms
   private projectileSpeed = 180; // slow enough to dodge
   private projectileLifetime = 4000; // ms
-  private variant: RangedVariant = 'single';
+  private variant: RangedVariant = RangedVariant.SINGLE;
   private bursting = false;
   private glowSprite: Phaser.GameObjects.Sprite | null = null;
   private glowFollowEvent?: Phaser.Time.TimerEvent;
@@ -20,10 +18,8 @@ export class RangedEnemy extends Enemy {
     super(scene, x, y, EnemyType.RANGED);
     this.setTint(0x66ccff);
     // Add a soft blue glow to make ranged enemies identifiable
-    if ((this as any).preFX) {
-      // Stronger glow so ranged enemies are highly visible
-      (this as any).preFX.addGlow(0x66ccff, 8, 0, false, 0.2, 16);
-    } else {
+    const hadGlow = this.tryAddGlow(0x66ccff, 8, 0, false, 0.2, 16);
+    if (!hadGlow) {
       // Fallback glow for environments without preFX (e.g., Canvas renderer)
       this.glowSprite = this.scene.add.sprite(this.x, this.y, this.texture.key);
       this.glowSprite.setScale(this.scaleX * 1.25, this.scaleY * 1.25);
@@ -41,9 +37,9 @@ export class RangedEnemy extends Enemy {
     this.maxRange = safeMin + 250;
     // Randomly choose a variant: 50% single, 25% burst, 25% arc
     const r = Math.random();
-    if (r < 0.5) this.variant = 'single';
-    else if (r < 0.75) this.variant = 'burst';
-    else this.variant = 'arc';
+    if (r < 0.5) this.variant = RangedVariant.SINGLE;
+    else if (r < 0.75) this.variant = RangedVariant.BURST;
+    else this.variant = RangedVariant.ARC;
   }
 
   public updateBehavior(player: Phaser.Physics.Arcade.Sprite): void {
@@ -79,12 +75,12 @@ export class RangedEnemy extends Enemy {
     const spread = Phaser.Math.DegToRad(Phaser.Math.Between(-5, 5));
     const aim = baseAngle + spread;
 
-    if (this.variant === 'single') {
+    if (this.variant === RangedVariant.SINGLE) {
       this.spawnProjectile(aim, player);
       return;
     }
 
-    if (this.variant === 'arc') {
+    if (this.variant === RangedVariant.ARC) {
       const offset = Phaser.Math.DegToRad(10);
       this.spawnProjectile(aim - offset, player);
       this.spawnProjectile(aim, player);
@@ -93,7 +89,7 @@ export class RangedEnemy extends Enemy {
     }
 
     // burst variant: 3 shots with 0.5s gaps
-    if (this.variant === 'burst') {
+    if (this.variant === RangedVariant.BURST) {
       if (this.bursting) return;
       this.bursting = true;
       this.spawnProjectile(aim, player);
@@ -104,7 +100,8 @@ export class RangedEnemy extends Enemy {
   }
 
   private spawnProjectile(angle: number, player: Phaser.Physics.Arcade.Sprite) {
-    const proj = this.scene.add.sprite(this.x, this.y, this.scene.textures.exists('projectile') ? 'projectile' : undefined);
+    const key = this.scene.textures.exists('projectile') ? 'projectile' : 'player';
+    const proj = this.scene.add.sprite(this.x, this.y, key);
     proj.setTint(0xff8844);
     this.scene.physics.add.existing(proj);
     (proj.body as Phaser.Physics.Arcade.Body).setVelocity(Math.cos(angle) * this.projectileSpeed, Math.sin(angle) * this.projectileSpeed);
@@ -112,7 +109,8 @@ export class RangedEnemy extends Enemy {
     // Overlap with player to deal damage
     this.scene.physics.add.overlap(proj, player, () => {
       if (!proj.active) return;
-      (player as any).takeDamage?.(18, this); // triple damage
+      // Deal damage if player has the method
+      (player as unknown as { takeDamage?: (amt: number, src: Enemy) => void }).takeDamage?.(18, this);
       proj.destroy();
     });
     // Lifetime cleanup

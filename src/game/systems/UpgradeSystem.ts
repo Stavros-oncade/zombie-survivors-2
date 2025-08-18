@@ -1,5 +1,6 @@
 import { Player } from '../entities/Player';
-import { Upgrade } from '../types/GameTypes';
+import { Upgrade, UpgradeId } from '../types/GameTypes';
+import { SceneKey } from '../config/SceneKeys';
 import { GameConstants } from '../config/GameConstants';
 import { RELICS } from './RelicSystem';
 import { Game } from '../scenes/Game';
@@ -7,7 +8,7 @@ import { Game } from '../scenes/Game';
 export class UpgradeSystem {
     private static availableUpgrades: Upgrade[] = [
         {
-            id: 'health_boost',
+            id: UpgradeId.HEALTH_BOOST,
             name: 'Health Boost',
             description: 'Increase your maximum health by 20%',
             effect: (player: Player) => {
@@ -17,7 +18,7 @@ export class UpgradeSystem {
             }
         },
         {
-            id: 'speed_boost',
+            id: UpgradeId.SPEED_BOOST,
             name: 'Speed Boost',
             description: 'Increase your movement speed by 15%',
             effect: (player: Player) => {
@@ -26,7 +27,7 @@ export class UpgradeSystem {
             }
         },
         {
-            id: 'weapon_damage',
+            id: UpgradeId.WEAPON_DAMAGE,
             name: 'Weapon Damage',
             description: 'Increase your weapon damage by 25%',
             effect: (player: Player) => {
@@ -34,7 +35,7 @@ export class UpgradeSystem {
             }
         },
         {
-            id: 'weapon_speed',
+            id: UpgradeId.WEAPON_SPEED,
             name: 'Weapon Speed',
             description: 'Increase your weapon attack speed by 20%',
             effect: (player: Player) => {
@@ -42,7 +43,7 @@ export class UpgradeSystem {
             }
         },
         {
-            id: 'health_regen',
+            id: UpgradeId.HEALTH_REGEN,
             name: 'Health Regeneration',
             description: 'Regenerate 1% of max health every 5 seconds',
             effect: (player: Player) => {
@@ -50,25 +51,25 @@ export class UpgradeSystem {
             }
         },
         {
-            id: 'piercing_shot',
+            id: UpgradeId.PIERCING_SHOT,
             name: 'Piercing Shot',
             description: 'Unlocks or upgrades a piercing projectile weapon',
             effect: (player: Player) => {
-                const game = player.scene.scene.get('Game') as Game;
+                const game = player.scene.scene.get(SceneKey.Game) as Game;
                 game.getWeaponSystem().unlockPiercing();
             }
         },
         {
-            id: 'explosive_burst',
+            id: UpgradeId.EXPLOSIVE_BURST,
             name: 'Explosive Burst',
             description: 'Unlocks or upgrades a short-range explosive burst',
             effect: (player: Player) => {
-                const game = player.scene.scene.get('Game') as Game;
+                const game = player.scene.scene.get(SceneKey.Game) as Game;
                 game.getWeaponSystem().unlockExplosive();
             }
         },
         {
-            id: 'projectile_speed',
+            id: UpgradeId.PROJECTILE_SPEED,
             name: 'Projectile Speed',
             description: 'Increase projectile speed by 30%',
             effect: (player: Player) => {
@@ -117,7 +118,7 @@ export class UpgradeSystem {
             name: `${r.name} [${r.rarity}]`,
             description: r.description,
             effect: (player: Player) => {
-                const game = player.scene.scene.get('Game') as any;
+                const game = player.scene.scene.get(SceneKey.Game) as any;
                 if (game && game.getRelicSystem) {
                     game.getRelicSystem().acquireRelic(r.id);
                 }

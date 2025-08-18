@@ -1,5 +1,7 @@
 import { Scene } from 'phaser';
 import { CHARACTERS, LoadoutManager } from '../systems/LoadoutManager';
+import { SceneKey } from '../config/SceneKeys';
+import { DefensiveSkillId, KillstreakPerkId } from '../types/GameTypes';
 
 export class Loadout extends Scene {
   private title!: Phaser.GameObjects.Text;
@@ -10,7 +12,7 @@ export class Loadout extends Scene {
   private defensiveInfoText!: Phaser.GameObjects.Text;
   private killstreakInfoText!: Phaser.GameObjects.Text;
 
-  constructor() { super('Loadout'); }
+  constructor() { super(SceneKey.Loadout); }
 
   create() {
     const lm = LoadoutManager.getInstance();
@@ -44,8 +46,8 @@ export class Loadout extends Scene {
     const lm2 = LoadoutManager.getInstance();
     const defLabel = this.add.text(w/2, y + 20, 'Defensive Skill', { fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5);
     y += 60;
-    const defensiveOptions: Array<[string, string]> = [['Dash','dash'], ['Barrier','barrier'], ['Repulse','repulse']];
-    const updateDefensiveInfo = (id: string) => {
+    const defensiveOptions: Array<[string, DefensiveSkillId]> = [['Dash', DefensiveSkillId.DASH], ['Barrier', DefensiveSkillId.BARRIER], ['Repulse', DefensiveSkillId.REPULSE]];
+    const updateDefensiveInfo = (id: DefensiveSkillId) => {
       const info = this.getDefensiveSkillInstructions(id);
       if (!this.defensiveInfoText) {
         this.defensiveInfoText = this.add.text(w/2, y + 18, info, {
@@ -61,7 +63,7 @@ export class Loadout extends Scene {
       const btn = this.add.text(w/2, y, name as string, { fontFamily: 'Arial', fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       const upd = () => btn.setStyle({ color: lm2.getDefensiveSkill() === id ? '#00ff88' : '#ffffff' });
       upd();
-      btn.on('pointerdown', () => { lm2.setDefensiveSkill(id as any); this.defensiveButtons.forEach(() => {}); upd(); updateDefensiveInfo(id); });
+      btn.on('pointerdown', () => { lm2.setDefensiveSkill(id); this.defensiveButtons.forEach(() => {}); upd(); updateDefensiveInfo(id); });
       btn.on('pointerover', () => btn.setStyle({ color: '#ffff00' }));
       btn.on('pointerout', upd);
       this.defensiveButtons.push(btn);
@@ -75,7 +77,7 @@ export class Loadout extends Scene {
     // Killstreak Perk selection
     const ksLabel = this.add.text(w/2, y + 20, 'Killstreak Perk', { fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5);
     y += 60;
-    const updateKillstreakInfo = (id: string) => {
+    const updateKillstreakInfo = (id: KillstreakPerkId) => {
       const info = this.getKillstreakInstructions(id);
       if (!this.killstreakInfoText) {
         this.killstreakInfoText = this.add.text(w/2, y + 18, info, {
@@ -87,11 +89,11 @@ export class Loadout extends Scene {
         this.killstreakInfoText.setText(info);
       }
     };
-    [['Damage','damage'], ['XP','xp'], ['Speed','speed']].forEach(([name,id]) => {
+    [['Damage', KillstreakPerkId.DAMAGE], ['XP', KillstreakPerkId.XP], ['Speed', KillstreakPerkId.SPEED]].forEach(([name,id]) => {
       const btn = this.add.text(w/2, y, name as string, { fontFamily: 'Arial', fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       const upd = () => btn.setStyle({ color: lm2.getKillstreakPerk() === id ? '#00ff88' : '#ffffff' });
       upd();
-      btn.on('pointerdown', () => { lm2.setKillstreakPerk(id as any); this.killstreakButtons.forEach(() => {}); upd(); updateKillstreakInfo(id); });
+      btn.on('pointerdown', () => { lm2.setKillstreakPerk(id); this.killstreakButtons.forEach(() => {}); upd(); updateKillstreakInfo(id); });
       btn.on('pointerover', () => btn.setStyle({ color: '#ffff00' }));
       btn.on('pointerout', upd);
       this.killstreakButtons.push(btn);
@@ -106,30 +108,30 @@ export class Loadout extends Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerover', () => this.startButton.setStyle({ color: '#ffff00' }))
       .on('pointerout', () => this.startButton.setStyle({ color: '#ffffff' }))
-      .on('pointerdown', () => this.scene.start('SpawnTuner'));
+      .on('pointerdown', () => this.scene.start(SceneKey.SpawnTuner));
   }
 
-  private getDefensiveSkillInstructions(id: string): string {
-    if (id === 'dash') {
+  private getDefensiveSkillInstructions(id: DefensiveSkillId): string {
+    if (id === DefensiveSkillId.DASH) {
       return 'Dash — Press Shift to dash in your current movement direction.\nGrants brief invulnerability and a burst of speed. Cooldown ~1.2s (reduced with level).';
     }
-    if (id === 'barrier') {
+    if (id === DefensiveSkillId.BARRIER) {
       return 'Barrier — Press Shift to deploy a short-lived protective field.\nGrants brief invulnerability while active. Cooldown similar to Dash; duration improves with level.';
     }
-    if (id === 'repulse') {
+    if (id === DefensiveSkillId.REPULSE) {
       return 'Repulse — Press Shift to emit a shockwave that pushes enemies away without dealing damage.\nAlso disperses toxic gas clouds in range. Radius and force scale with level.';
     }
     return 'Select a defensive skill to see instructions.';
   }
 
-  private getKillstreakInstructions(id: string): string {
-    if (id === 'damage') {
+  private getKillstreakInstructions(id: KillstreakPerkId): string {
+    if (id === KillstreakPerkId.DAMAGE) {
       return 'Damage Killstreak — Each 10-kill streak raises a damage multiplier (up to a cap).\nThe multiplier resets if you get hit or stop killing for a short time.';
     }
-    if (id === 'xp') {
+    if (id === KillstreakPerkId.XP) {
       return 'XP Killstreak — Each 10-kill streak grants bonus XP from kills (up to a cap).\nResets on hit or if you stop chaining kills.';
     }
-    if (id === 'speed') {
+    if (id === KillstreakPerkId.SPEED) {
       return 'Attack Speed Killstreak — Each 10-kill streak increases your attack speed (up to a cap).\nResets when you get hit or let the streak decay.';
     }
     return 'Select a killstreak perk to see how it works.';

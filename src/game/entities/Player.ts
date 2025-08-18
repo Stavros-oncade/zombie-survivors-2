@@ -3,6 +3,7 @@ import { PlayerStats } from '../types/GameTypes';
 import { ExperienceSystem } from '../systems/ExperienceSystem';
 import { trackEvent } from '../../oncade/OncadeIntegration';
 import { Game } from '../scenes/Game';
+import { SceneKey } from '../config/SceneKeys';
 import { Enemy } from './Enemy';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
@@ -129,7 +130,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         console.log("Player Died. Stats:", this.getStats());
         
         // Get play time from the GameUI instead of the Game scene
-        const gameScene = this.scene.scene.get('Game') as Game;
+        const gameScene = this.scene.scene.get(SceneKey.Game) as Game;
         const gameUI = gameScene ? gameScene.getGameUI() : null;
         const playTime = gameUI ? gameUI.getGameTime() : 0;
         
@@ -141,7 +142,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             playTimeSeconds: playTime
         });
         
-        this.scene.scene.start('GameOver', { 
+        this.scene.scene.start(SceneKey.GameOver, { 
             enemiesKilled: this.enemiesKilled, 
             xpGained: this.xpGained,
             levelReached: this.experienceSystem.getCurrentLevel(),
@@ -230,13 +231,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     public setMovementSpeed(newSpeed: number): void {
         // Clamp to [0, MAX]
-        const max = (GameConstants as any).PLAYER?.MAX_MOVEMENT_SPEED ?? this.movementSpeed;
+        const max = GameConstants.PLAYER.MAX_MOVEMENT_SPEED ?? this.movementSpeed;
         this.movementSpeed = Math.max(0, Math.min(newSpeed, max));
     }
 
     public upgradeWeaponDamage(multiplier: number): void {
         // Get the weapon system from the game scene
-        const gameScene = this.scene.scene.get('Game') as Game;
+        const gameScene = this.scene.scene.get(SceneKey.Game) as Game;
         if (gameScene && gameScene.getWeaponSystem()) {
             gameScene.getWeaponSystem().upgradeWeaponDamage(multiplier);
         }
@@ -244,7 +245,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     public upgradeWeaponSpeed(multiplier: number): void {
         // Get the weapon system from the game scene
-        const gameScene = this.scene.scene.get('Game') as Game;
+        const gameScene = this.scene.scene.get(SceneKey.Game) as Game;
         if (gameScene && gameScene.getWeaponSystem()) {
             gameScene.getWeaponSystem().upgradeWeaponSpeed(multiplier);
         }
@@ -252,10 +253,27 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     public upgradeProjectileSpeed(multiplier: number): void {
         // Get the weapon system from the game scene
-        const gameScene = this.scene.scene.get('Game') as Game;
+        const gameScene = this.scene.scene.get(SceneKey.Game) as Game;
         if (gameScene && gameScene.getWeaponSystem()) {
             gameScene.getWeaponSystem().upgradeProjectileSpeed(multiplier);
         }
+    }
+
+    /**
+     * Grants temporary immunity to repeated damage from the same source for a specified duration.
+     * Resets the last damage source immediately and starts/restarts the internal immunity timer.
+     */
+    public grantImmunity(durationMs: number): void {
+        if (this.immunityTimer) {
+            this.immunityTimer.destroy();
+        }
+        this.lastDamageSource = null;
+        this.immunityTimer = this.scene.time.addEvent({
+            delay: Math.max(0, durationMs),
+            callback: () => {
+                this.lastDamageSource = null;
+            }
+        });
     }
 
     public enableHealthRegeneration(percentPerTick: number, intervalMs: number): void {
@@ -301,7 +319,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     // Asymptotic speed growth toward a cap for permanent upgrades
     public applyAsymptoticSpeedIncrease(multiplier: number): void {
-        const max = (GameConstants as any).PLAYER?.MAX_MOVEMENT_SPEED ?? this.movementSpeed;
+        const max = GameConstants.PLAYER.MAX_MOVEMENT_SPEED ?? this.movementSpeed;
         const current = this.movementSpeed;
         const factor = Math.max(1, multiplier);
         const increment = (max - current) * (factor - 1);

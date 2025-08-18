@@ -4,6 +4,7 @@ import { EventBus } from '../EventBus';
 import { initializeOncade, getStoreCatalog, openTipUrl, getAllConfig, getConfig } from '../../oncade/OncadeIntegration';
 import { ScreenManager } from '../utils/ScreenManager';
 import { GameConfig } from '../config/GameConfig';
+import { SceneKey } from '../config/SceneKeys';
 
 export class MainMenu extends Scene
 {
@@ -23,7 +24,7 @@ export class MainMenu extends Scene
 
     constructor ()
     {
-        super('MainMenu');
+        super(SceneKey.MainMenu);
         this.screenManager = ScreenManager.getInstance();
     }
 
@@ -138,7 +139,7 @@ export class MainMenu extends Scene
         .setInteractive({ useHandCursor: true })
         .on('pointerover', () => this.playButton.setStyle({ color: '#ffff00' }))
         .on('pointerout', () => this.playButton.setStyle({ color: '#ffffff' }))
-        .on('pointerdown', () => this.scene.start('Loadout'));
+        .on('pointerdown', () => this.scene.start(SceneKey.Loadout));
         
         // --- Add Oncade Buttons --- 
         // Store Button (Now emits event to show React UI)
@@ -172,7 +173,7 @@ export class MainMenu extends Scene
 
         // Blueprints Button
         const bpButton = this.createButton('Blueprints', () => {
-            this.scene.start('Blueprints');
+            this.scene.start(SceneKey.Blueprints);
         });
         bpButton.setPosition(this.cameras.main.width / 2, playButtonY - buttonYOffset);
         bpButton.setDepth(102);
@@ -200,7 +201,7 @@ export class MainMenu extends Scene
         // Clean up all zombies and their update callbacks
         this.cleanupZombies();
 
-        this.scene.start('Loadout');
+        this.scene.start(SceneKey.Loadout);
     }
 
     cleanupZombies(): void {

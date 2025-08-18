@@ -1,4 +1,5 @@
 import { Scene } from 'phaser';
+import { SceneKey } from '../config/SceneKeys';
 
 export class GameOver extends Scene
 {
@@ -16,7 +17,7 @@ export class GameOver extends Scene
 
     constructor ()
     {
-        super('GameOver');
+        super(SceneKey.GameOver);
     }
 
     init(data: { 
@@ -89,11 +90,11 @@ export class GameOver extends Scene
         });
         
         // Emit scene ready event directly to the game
-        this.scene.get('Game').events.emit('current-scene-ready', this);
+        this.scene.get(SceneKey.Game).events.emit('current-scene-ready', this);
     }
 
     changeScene ()
     {
-        this.scene.start('MainMenu');
+        this.scene.start(SceneKey.MainMenu);
     }
 }

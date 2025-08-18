@@ -1,8 +1,10 @@
 import { Scene } from 'phaser';
 import { SpawningConfig } from '../systems/SpawningConfig';
+import { SpawnState } from '../types/GameTypes';
+import { SceneKey } from '../config/SceneKeys';
 
 export class SpawnTuner extends Scene {
-  constructor() { super('SpawnTuner'); }
+  constructor() { super(SceneKey.SpawnTuner); }
 
   private rateText!: Phaser.GameObjects.Text;
   private eliteToggleText!: Phaser.GameObjects.Text;
@@ -99,7 +101,7 @@ export class SpawnTuner extends Scene {
     }).setOrigin(0.5);
 
     const drawState = () => {
-      const label = cfg.startState ? cfg.startState : 'default (normal)';
+      const label = cfg.startState ? cfg.startState : SpawnState.NORMAL;
       if (!this.startStateText || !this.startStateText.active) {
         this.startStateText = this.add
           .text(w / 2, 430, `Current: ${label}`, {
@@ -116,7 +118,7 @@ export class SpawnTuner extends Scene {
     };
     drawState();
 
-    const makeStateBtn = (label: string, key: string, x: number, y: number) => {
+    const makeStateBtn = (label: string, key: SpawnState, x: number, y: number) => {
       this.add.text(x, y, label, { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff', stroke: '#000000', strokeThickness: 3, backgroundColor: '#333', padding: { x: 10, y: 6 } })
         .setOrigin(0.5).setInteractive({ useHandCursor: true })
         .on('pointerover', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffff00' }); })
@@ -125,24 +127,24 @@ export class SpawnTuner extends Scene {
     };
 
     const sy = 465;
-    makeStateBtn('Normal', 'normal', w/2 - 260, sy);
-    makeStateBtn('Peak', 'peak', w/2 - 130, sy);
-    makeStateBtn('Cooldown', 'cooldown', w/2, sy);
-    makeStateBtn('Ranged Pack', 'ranged_pack', w/2 + 130, sy);
-    makeStateBtn('Carrier Pack', 'carrier_pack', w/2 + 130, sy);
-    makeStateBtn('Toxic Pack', 'toxic_pack', w/2 + 260, sy);
+    makeStateBtn('Normal', SpawnState.NORMAL, w/2 - 260, sy);
+    makeStateBtn('Peak', SpawnState.PEAK, w/2 - 130, sy);
+    makeStateBtn('Cooldown', SpawnState.COOLDOWN, w/2, sy);
+    makeStateBtn('Ranged Pack', SpawnState.RANGED_PACK, w/2 + 130, sy);
+    makeStateBtn('Carrier Pack', SpawnState.CARRIER_PACK, w/2 + 130, sy);
+    makeStateBtn('Toxic Pack', SpawnState.TOXIC_PACK, w/2 + 260, sy);
 
     this.add.text(w/2, h - 100, 'Start Game', {
       fontFamily: 'Arial Black', fontSize: '32px', color: '#ffffff', stroke: '#000000', strokeThickness: 6
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerover', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffff00' }); })
       .on('pointerout', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffffff' }); })
-      .on('pointerdown', () => this.scene.start('Game'));
+      .on('pointerdown', () => this.scene.start(SceneKey.Game));
 
     // Back option
     this.add.text(40, h - 40, 'Back', { fontFamily: 'Arial', fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 })
       .setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => this.scene.start('Loadout'));
+      .on('pointerdown', () => this.scene.start(SceneKey.Loadout));
 
     // On shutdown/destroy, clear references so we don't hold onto destroyed objects
     this.events.once('shutdown', () => {

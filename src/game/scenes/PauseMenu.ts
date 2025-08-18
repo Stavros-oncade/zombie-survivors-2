@@ -1,4 +1,5 @@
 import { GameObjects, Scene } from 'phaser';
+import { SceneKey } from '../config/SceneKeys';
 
 export class PauseMenu extends Scene {
     private background: GameObjects.Rectangle;
@@ -10,7 +11,7 @@ export class PauseMenu extends Scene {
     private escapeKey!: Phaser.Input.Keyboard.Key;
 
     constructor() {
-        super('PauseMenu');
+        super(SceneKey.PauseMenu);
     }
 
     create() {
@@ -128,11 +129,11 @@ export class PauseMenu extends Scene {
 
     private resumeGame() {
         this.hide();
-        this.scene.resume('Game');
+        this.scene.resume(SceneKey.Game);
     }
 
     private goToMainMenu() {
-        this.scene.stop('Game');
-        this.scene.start('MainMenu');
+        this.scene.stop(SceneKey.Game);
+        this.scene.start(SceneKey.MainMenu);
     }
 } 

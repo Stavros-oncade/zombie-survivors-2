@@ -9,7 +9,7 @@ import { GameUI } from "../ui/GameUI";
 import { PauseMenu } from "./PauseMenu";
 import { UIEffects } from "../effects/UIEffects";
 import { UpgradeSystem } from "../systems/UpgradeSystem";
-import { Upgrade, PickupType } from "../types/GameTypes";
+import { Upgrade, PickupType, CharacterId, GasCloudTag } from "../types/GameTypes";
 import { PickupAssetGenerator } from "../utils/GeneratePickupAssets";
 import { GameConstants } from "../config/GameConstants";
 import { ExplosionConfig } from "../config/ExplosionConfig";
@@ -24,6 +24,8 @@ import { SkillSystem } from "../systems/SkillSystem";
 import { KillstreakSystem } from "../systems/KillstreakSystem";
 import { SpawningConfig } from "../systems/SpawningConfig";
 import { BlueprintDrop } from "../entities/BlueprintDrop";
+import { SceneKey } from "../config/SceneKeys";
+import { BossEnemy } from "../entities/BossEnemy";
 
 export class Game extends Scene {
     private player!: Player;
@@ -56,9 +58,11 @@ export class Game extends Scene {
     private skillButtonIcon: Phaser.GameObjects.Text | null = null;
     private isLevelUpPending: boolean = false;
     private eliteXPDelayUntil: number = 0;
+    // Toxic gas clouds registry for typed access by skills
+    private __gasClouds?: Set<Phaser.GameObjects.Graphics & GasCloudTag>;
 
     constructor() {
-        super({ key: "Game" });
+        super({ key: SceneKey.Game });
     }
 
     create() {
@@ -134,12 +138,12 @@ export class Game extends Scene {
         // Apply character loadout
         const lm = LoadoutManager.getInstance();
         const character = lm.getCharacter();
-        if (character === 'soldier') {
+        if (character === CharacterId.SOLDIER) {
             this.player.setMaxHealth(Math.floor(this.player.getStats().maxHealth * 1.2));
             this.player.heal(0);
-        } else if (character === 'scout') {
+        } else if (character === CharacterId.SCOUT) {
             this.player.applyAsymptoticSpeedIncrease(1.10);
-        } else if (character === 'demolitionist') {
+        } else if (character === CharacterId.DEMOLITIONIST) {
             this.weaponSystem.unlockExplosive();
         }
 
@@ -148,8 +152,8 @@ export class Game extends Scene {
 
         // Initialize skills and killstreak
         const lmSkill = LoadoutManager.getInstance();
-        this.skillSystem = new SkillSystem(this, lmSkill.getDefensiveSkill() as any);
-        this.killstreakSystem = new KillstreakSystem(this, lmSkill.getKillstreakPerk() as any);
+        this.skillSystem = new SkillSystem(this, lmSkill.getDefensiveSkill());
+        this.killstreakSystem = new KillstreakSystem(this, lmSkill.getKillstreakPerk());
 
         // Apply spawning tuner options at start — schedule after a short delay
         const sc = SpawningConfig.getInstance();
@@ -298,7 +302,7 @@ export class Game extends Scene {
         this.gameUI = new GameUI(this);
 
         // Launch the PauseMenu scene
-        this.scene.launch("PauseMenu");
+        this.scene.launch(SceneKey.PauseMenu);
 
         // Set up collisions between player and pickups
         this.physics.add.overlap(
@@ -338,7 +342,7 @@ export class Game extends Scene {
             cam.pan(elite.x, elite.y, 300, 'Sine.easeInOut');
             cam.zoomTo(1.5, 300);
 
-            const eliteNm = (elite as any).nameText?.text || 'ELITE';
+            const eliteNm = elite.getNameText()?.text || 'ELITE';
             const prompt = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.18,
                 `${eliteNm} — TAP TO CONTINUE`, {
                     fontFamily: 'Arial Black', fontSize: '20px', color: '#ffff99', stroke: '#000000', strokeThickness: 6
@@ -358,12 +362,12 @@ export class Game extends Scene {
                     this.isEliteIntro = false;
                 });
                 this.input.off('pointerdown', tryResume);
-                this.input.keyboard?.off('keydown', tryResume as any);
+                this.input.keyboard?.off('keydown', tryResume);
             };
 
             // Register input immediately but gate it until allowed
             this.input.on('pointerdown', tryResume);
-            this.input.keyboard?.on('keydown', tryResume as any);
+            this.input.keyboard?.on('keydown', tryResume);
 
             // Enable input after 3 seconds
             this.time.delayedCall(3000, () => { allowInput = true; });
@@ -373,7 +377,7 @@ export class Game extends Scene {
         });
 
         // Boss spawn intro: pause physics, pan to boss, show label, resume on input
-        this.events.on('boss_spawned', (boss: any) => {
+        this.events.on('boss_spawned', (boss: BossEnemy) => {
             if (!this.scene.isActive()) { return; }
             this.isEliteIntro = true; // reuse intro flag to pause updates
             this.physics.world.pause();
@@ -386,7 +390,7 @@ export class Game extends Scene {
 
             // World-space label centered on the boss, much larger
             // Large boss name during intro (UI overlay)
-            const bossNm = (boss as any).nameText?.text || 'BOSS';
+            const bossNm = boss.getNameText()?.text || 'BOSS';
             const bossLabel = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.2, bossNm, {
                 fontFamily: 'Arial Black', fontSize: '96px', color: '#ff4444', stroke: '#000000', strokeThickness: 12
             }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
@@ -407,12 +411,12 @@ export class Game extends Scene {
                     this.isEliteIntro = false;
                 });
                 this.input.off('pointerdown', tryResume);
-                this.input.keyboard?.off('keydown', tryResume as any);
+                this.input.keyboard?.off('keydown', tryResume);
             };
 
             // Register listeners; gate input for 3s to avoid instant skip
             this.input.on('pointerdown', tryResume);
-            this.input.keyboard?.on('keydown', tryResume as any);
+            this.input.keyboard?.on('keydown', tryResume);
             this.time.delayedCall(3000, () => { allowInput = true; });
             // Safety auto-resume
             this.time.delayedCall(7000, tryResume);
@@ -432,10 +436,10 @@ export class Game extends Scene {
             // Elite chest reward: pause and offer relics
             this.scene.pause();
             const upgrades = UpgradeSystem.getRandomRelicUpgradesFiltered(3, this.relicSystem.getAcquiredIds());
-            if (this.scene.isActive("LevelUpSelection")) {
-                this.scene.stop("LevelUpSelection");
+            if (this.scene.isActive(SceneKey.LevelUpSelection)) {
+                this.scene.stop(SceneKey.LevelUpSelection);
             }
-            this.scene.launch("LevelUpSelection", { player: this.player, upgrades });
+            this.scene.launch(SceneKey.LevelUpSelection, { player: this.player, upgrades });
         });
 
         // Boss drop: 1-2 blueprint points
@@ -494,7 +498,7 @@ export class Game extends Scene {
         // enemies spawn on a timer they set internally
 
         // Update enemies
-        const enemyChildren = this.enemies.getChildren() as any[];
+        const enemyChildren = this.enemies.getChildren() as Enemy[];
         enemyChildren.forEach((enemy) => {
             if (!enemy.active) return;
             if (enemy instanceof EliteEnemy) {
@@ -524,7 +528,7 @@ export class Game extends Scene {
         if (this.killstreakSystem) {
             const mult = this.killstreakSystem.getMultiplier();
             const perk = this.killstreakSystem.getPerk();
-            this.gameUI.updateKillstreak(mult, perk as any);
+            this.gameUI.updateKillstreak(mult, perk);
         }
     }
 
@@ -536,7 +540,7 @@ export class Game extends Scene {
     }
 
     private togglePause() {
-        const pauseMenu = this.scene.get("PauseMenu") as PauseMenu;
+        const pauseMenu = this.scene.get(SceneKey.PauseMenu) as PauseMenu;
         if (pauseMenu) {
             pauseMenu.toggle();
             if (pauseMenu.isVisible) {
@@ -563,14 +567,41 @@ export class Game extends Scene {
         return this.weaponSystem;
     }
 
+    public getCursors(): Phaser.Types.Input.Keyboard.CursorKeys {
+        return this.cursors;
+    }
+
+    public getWasdKeys(): { [key: string]: Phaser.Input.Keyboard.Key } {
+        return this.wasdKeys;
+    }
+
     // Expose enemies group to spawners/carrier on-death
     public getEnemiesGroup(): Phaser.Physics.Arcade.Group {
         return this.enemies;
     }
 
+    // Expose player for typed access from entities
+    public getPlayer(): Player {
+        return this.player;
+    }
+
     // Expose relic system for upgrade/relic effects
     public getRelicSystem(): RelicSystem {
         return this.relicSystem;
+    }
+
+    // Registry accessors for toxic gas clouds
+    public registerGasCloud(g: Phaser.GameObjects.Graphics & GasCloudTag): void {
+        if (!this.__gasClouds) this.__gasClouds = new Set();
+        this.__gasClouds.add(g);
+    }
+
+    public unregisterGasCloud(g: Phaser.GameObjects.Graphics & GasCloudTag): void {
+        this.__gasClouds?.delete(g);
+    }
+
+    public getGasClouds(): ReadonlySet<(Phaser.GameObjects.Graphics & GasCloudTag)> | undefined {
+        return this.__gasClouds;
     }
 
     // Internal hook for relics to adjust XP multiplier
@@ -623,8 +654,8 @@ export class Game extends Scene {
             this.scene.pause();
 
             // Stop the LevelUpSelection scene if it's already running
-            if (this.scene.isActive("LevelUpSelection")) {
-                this.scene.stop("LevelUpSelection");
+            if (this.scene.isActive(SceneKey.LevelUpSelection)) {
+                this.scene.stop(SceneKey.LevelUpSelection);
             }
 
             // 15% chance to offer relics instead of upgrades
@@ -633,7 +664,7 @@ export class Game extends Scene {
                 : UpgradeSystem.getRandomUpgrades(3);
 
             // Launch the level up selection scene
-            this.scene.launch("LevelUpSelection", {
+            this.scene.launch(SceneKey.LevelUpSelection, {
                 player: this.player,
                 upgrades: upgrades,
             });

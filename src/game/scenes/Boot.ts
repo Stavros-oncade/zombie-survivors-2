@@ -1,10 +1,11 @@
 import { Scene } from 'phaser';
+import { SceneKey } from '../config/SceneKeys';
 
 export class Boot extends Scene
 {
     constructor ()
     {
-        super('Boot');
+        super(SceneKey.Boot);
     }
 
     preload ()
@@ -22,6 +23,6 @@ export class Boot extends Scene
         bg.setOrigin(0, 0);
         bg.setDisplaySize(this.cameras.main.width, this.cameras.main.height);
         
-        this.scene.start('Preloader');
+        this.scene.start(SceneKey.Preloader);
     }
 }

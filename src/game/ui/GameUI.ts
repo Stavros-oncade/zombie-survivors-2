@@ -1,4 +1,4 @@
-import { PlayerStats } from '../types/GameTypes';
+import { PlayerStats, KillstreakPerkId } from '../types/GameTypes';
 
 export class GameUI {
     private healthBar: Phaser.GameObjects.Graphics;
@@ -175,18 +175,24 @@ export class GameUI {
         this.skillCooldownLabel.setVisible(true);
     }
 
-    public updateKillstreak(multiplier: number, perk?: 'damage' | 'xp' | 'speed'): void {
+    public updateKillstreak(multiplier: number, perk?: KillstreakPerkId): void {
         if (!this.killstreakText) return;
         if (multiplier <= 1) {
             this.killstreakText.setVisible(false);
             return;
         }
-        const label = perk ? perk.toUpperCase() : 'COMBO';
+        const label = perk
+            ? (perk === KillstreakPerkId.DAMAGE
+                ? 'DAMAGE'
+                : perk === KillstreakPerkId.XP
+                    ? 'XP'
+                    : 'SPEED')
+            : 'COMBO';
         this.killstreakText.setText(`${label} x${multiplier}`);
         let color = '#ffffff';
-        if (perk === 'damage') color = '#ff5555';
-        if (perk === 'xp') color = '#ffd54f';
-        if (perk === 'speed') color = '#66ccff';
+        if (perk === KillstreakPerkId.DAMAGE) color = '#ff5555';
+        if (perk === KillstreakPerkId.XP) color = '#ffd54f';
+        if (perk === KillstreakPerkId.SPEED) color = '#66ccff';
         this.killstreakText.setColor(color);
         this.killstreakText.setVisible(true);
     }

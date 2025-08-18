@@ -1,6 +1,5 @@
 import { Game } from '../scenes/Game';
-
-export type KillstreakPerkId = 'damage' | 'xp' | 'speed';
+import { KillstreakPerkId } from '../types/GameTypes';
 
 export class KillstreakSystem {
   private game: Game;
@@ -35,13 +34,13 @@ export class KillstreakSystem {
     const ws = this.game.getWeaponSystem();
     // Use temp multiplier so we don't permanently scale base damage
     const m = this.multiplier;
-    if (this.perk === 'damage') ws.setTempDamageMultiplier(1 + 0.15 * (m - 1));
-    if (this.perk === 'speed') ws.upgradeWeaponSpeed(1 + 0.10 * (m - 1));
+    if (this.perk === KillstreakPerkId.DAMAGE) ws.setTempDamageMultiplier(1 + 0.15 * (m - 1));
+    if (this.perk === KillstreakPerkId.SPEED) ws.upgradeWeaponSpeed(1 + 0.10 * (m - 1));
     // xp perk handled in Game enemyKilled XP calc by reading current multiplier
   }
 
   public getXPMult(): number {
-    return this.perk === 'xp' ? 1 + 0.15 * (this.multiplier - 1) : 1;
+    return this.perk === KillstreakPerkId.XP ? 1 + 0.15 * (this.multiplier - 1) : 1;
   }
 
   public getMultiplier(): number { return this.multiplier; }

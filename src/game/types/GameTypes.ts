@@ -34,6 +34,24 @@ export interface UpgradeOption {
     container: Phaser.GameObjects.Container;
 }
 
+export enum CharacterId {
+    SOLDIER = 'soldier',
+    SCOUT = 'scout',
+    DEMOLITIONIST = 'demolitionist'
+}
+
+export enum DefensiveSkillId {
+    DASH = 'dash',
+    BARRIER = 'barrier',
+    REPULSE = 'repulse'
+}
+
+export enum KillstreakPerkId {
+    DAMAGE = 'damage',
+    XP = 'xp',
+    SPEED = 'speed'
+}
+
 export enum EnemyType {
     BASIC = 'basic',
     FAST = 'fast',
@@ -50,3 +68,65 @@ export enum PickupType {
     EXPERIENCE = 'experience',
     BOMB = 'bomb'
 } 
+
+export enum RelicRarity {
+    COMMON = 'common',
+    RARE = 'rare',
+    EPIC = 'epic',
+    LEGENDARY = 'legendary'
+}
+
+export enum EliteState {
+    CHASE = 'chase',
+    TELEGRAPH = 'telegraph',
+    CHARGE = 'charge'
+}
+
+export enum EliteAffix {
+    MOLTEN = 'molten',
+    SHIELDED = 'shielded',
+    FROST = 'frost'
+}
+
+export enum RangedVariant {
+    SINGLE = 'single',
+    BURST = 'burst',
+    ARC = 'arc'
+}
+
+// Tag data attached to toxic gas cloud graphics for cleanup and interactions
+export interface GasCloudTag {
+    __gasX: number;
+    __gasY: number;
+    __gasRadius: number;
+    __gasTick?: Phaser.Time.TimerEvent;
+}
+
+// Spawn system enums
+export enum SpawnState {
+    NORMAL = 'normal',
+    PEAK = 'peak',
+    COOLDOWN = 'cooldown',
+    RANGED_PACK = 'ranged_pack',
+    CARRIER_PACK = 'carrier_pack',
+    TOXIC_PACK = 'toxic_pack'
+}
+
+export enum ClusterType {
+    RANDOM = 'random',
+    SAME_SIDE = 'sameSide',
+    PINCER = 'pincer',
+    AROUND = 'around'
+}
+
+// Upgrade identifiers
+export enum UpgradeId {
+    HEALTH_BOOST = 'health_boost',
+    SPEED_BOOST = 'speed_boost',
+    WEAPON_DAMAGE = 'weapon_damage',
+    WEAPON_SPEED = 'weapon_speed',
+    HEALTH_REGEN = 'health_regen',
+    PIERCING_SHOT = 'piercing_shot',
+    EXPLOSIVE_BURST = 'explosive_burst',
+    PROJECTILE_SPEED = 'projectile_speed'
+}

@@ -1,9 +1,10 @@
 import { GameConstants } from '../config/GameConstants';
 import { EnemyType, PickupType } from '../types/GameTypes';
-import { Player } from './Player';
+// Note: base methods accept Phaser sprites to avoid tight coupling
 import { DeathEffect } from '../effects/DeathEffect';
 import { Pickup } from './Pickup';
 import { Game } from '../scenes/Game';
+import { SceneKey } from '../config/SceneKeys';
 
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
     private health: number;
@@ -97,7 +98,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.maxHealth = this.health;
     }
 
-    public moveTowardsPlayer(player: Player): void {
+    public moveTowardsPlayer(player: Phaser.Physics.Arcade.Sprite): void {
         // Skip movement if stunned
         if (this.isStunned) return;
         
@@ -110,6 +111,37 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
         this.setVelocityX(Math.cos(angle) * this.speed);
         this.setVelocityY(Math.sin(angle) * this.speed);
+    }
+
+    /**
+     * Adjust current health directly. Clamped to [0, maxHealth].
+     */
+    public setHealth(value: number): void {
+        this.health = Math.max(0, Math.min(value, this.maxHealth));
+    }
+
+    /**
+     * Adjust maximum health. If current health exceeds new max, it will be clamped down.
+     */
+    public setMaxHealth(value: number): void {
+        this.maxHealth = Math.max(0, value);
+        if (this.health > this.maxHealth) {
+            this.health = this.maxHealth;
+        }
+    }
+
+    /**
+     * Try to add a glow effect using Phaser's preFX if available.
+     * Returns true if the effect was applied.
+     */
+    public tryAddGlow(color: number, distance: number, _quality: number, knockout: boolean, alpha: number, strength: number): boolean {
+        type GlowCapable = { preFX?: { addGlow?: (color: number, distance: number, quality: number, knockout: boolean, alpha: number, strength: number) => void } };
+        const selfMaybeWithPreFX = this as unknown as GlowCapable;
+        if (selfMaybeWithPreFX.preFX && typeof selfMaybeWithPreFX.preFX.addGlow === 'function') {
+            selfMaybeWithPreFX.preFX.addGlow(color, distance, 0, knockout, alpha, strength);
+            return true;
+        }
+        return false;
     }
 
     public takeDamage(amount: number): void {
@@ -192,7 +224,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.scene.add.existing(pickup);
         
         // Add to the pickups physics group if the scene is a Game scene
-        if (this.scene.scene.key === 'Game' && this.scene instanceof Game) {
+        if (this.scene.scene.key === SceneKey.Game && this.scene instanceof Game) {
             const pickupsGroup = this.scene.getPickupsGroup();
             if (pickupsGroup) {
                 pickupsGroup.add(pickup);
