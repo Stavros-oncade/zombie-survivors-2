@@ -1,4 +1,5 @@
 import { Enemy } from './Enemy';
+import { Player } from './Player';
 import { EnemyType, RangedVariant } from '../types/GameTypes';
 import { ExplosionConfig } from '../config/ExplosionConfig';
 
@@ -110,7 +111,9 @@ export class RangedEnemy extends Enemy {
     this.scene.physics.add.overlap(proj, player, () => {
       if (!proj.active) return;
       // Deal damage if player has the method
-      (player as unknown as { takeDamage?: (amt: number, src: Enemy) => void }).takeDamage?.(18, this);
+      if (player instanceof Player) {
+        player.takeDamage(18, this);
+      }
       proj.destroy();
     });
     // Lifetime cleanup

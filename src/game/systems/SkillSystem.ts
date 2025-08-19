@@ -102,10 +102,10 @@ export class SkillSystem {
     // Apply pure knockback (no damage) to nearby enemies
     const enemiesGroup = this.game.getEnemiesGroup();
     if (enemiesGroup) {
-      const enemies = enemiesGroup.getChildren() as Phaser.GameObjects.GameObject[];
+      const enemies = enemiesGroup.getChildren();
       enemies.forEach((obj) => {
-        const e = obj as unknown as { x: number; y: number; active: boolean; applyKnockback?: (force: number, angle: number) => void };
-        if (!e || !e.active) return;
+        const e = obj as Partial<{ x: number; y: number; active: boolean; applyKnockback: (force: number, angle: number) => void }>;
+        if (!e || !e.active || typeof e.x !== 'number' || typeof e.y !== 'number') return;
         const ex = e.x; const ey = e.y;
         const d = Phaser.Math.Distance.Between(px, py, ex, ey);
         if (d <= radius) {

@@ -49,16 +49,17 @@ export class PiercingWeapon implements IWeapon {
     proj.setRotation(angle);
     (proj.body as Phaser.Physics.Arcade.Body).setVelocity(Math.cos(angle) * this.projectileSpeed, Math.sin(angle) * this.projectileSpeed);
 
-    // Track how many enemies pierced
-    (proj as any).__pierced = 0;
+    // Track how many enemies pierced using data manager to avoid any-casts
+    proj.setDataEnabled();
+    proj.data?.set('__pierced', 0);
     // Add overlap for each enemy
     enemies.forEach(enemy => {
       scene.physics.add.overlap(proj, enemy, () => {
         if (!enemy.active || !proj.active) return;
-        const pierced = (proj as any).__pierced as number;
+        const pierced = (proj.data?.get('__pierced') as number) ?? 0;
         enemy.takeDamage(this.getDamage());
-        (proj as any).__pierced = pierced + 1;
-        if ((proj as any).__pierced >= this.pierceCount) {
+        proj.data?.set('__pierced', pierced + 1);
+        if (((proj.data?.get('__pierced') as number) ?? 0) >= this.pierceCount) {
           proj.destroy();
         }
       });

@@ -326,15 +326,26 @@ export class LevelUpSelection extends Scene {
             selectedBg.setStrokeStyle(4, 0x00ff00);
         }
 
-        // Apply the upgrade
-        upgrade.effect(this.player);
+        // Apply the upgrade (guard if player died or scene was torn down)
+        try {
+            if (this.player && this.player.scene && this.player.active) {
+                upgrade.effect(this.player);
+            } else {
+                console.warn('[LevelUpSelection] Player not available; skipping upgrade effect.');
+            }
+        } catch (err) {
+            console.warn('[LevelUpSelection] Error applying upgrade effect:', err);
+        }
 
         this.resumeGame();
     }
 
     private resumeGame(): void {
-        // Emit event directly to the game scene
-        this.scene.get(SceneKey.Game).events.emit("level_up_selection_complete", this.selectedUpgrade);
+        // Emit event to the game scene if present
+        const gameScene = this.scene.manager.getScene(SceneKey.Game) as Game | undefined;
+        if (gameScene && gameScene.events) {
+            gameScene.events.emit("level_up_selection_complete", this.selectedUpgrade);
+        }
         
         // Clean up the scene before stopping it
         this.destroy();

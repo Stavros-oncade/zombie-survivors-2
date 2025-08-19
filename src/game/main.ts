@@ -70,12 +70,12 @@ const StartGame = (parent: string) => {
     // Ensure the canvas always matches viewport size
     const onResize = () => {
         // Guard in case game is destroyed
-        if (!game || !(game as any).scale || !(game as any).canvas) return;
+        if (!game || !game.scale || !game.canvas) return;
         game.scale.resize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener('resize', onResize);
     // Stash listener for cleanup
-    (game as any).__onResize = onResize;
+    (game as Phaser.Game).__onResize = onResize;
 
     // Initialize the screen manager after game creation
     const screenManager = ScreenManager.getInstance();

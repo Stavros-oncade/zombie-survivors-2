@@ -8,7 +8,7 @@ import { RangedEnemy } from '../entities/RangedEnemy';
 import { CarrierEnemy } from '../entities/CarrierEnemy';
 import { ToxicTankEnemy } from '../entities/ToxicTankEnemy';
 import { SpawningConfig } from './SpawningConfig';
-import { SpawningConfig } from './SpawningConfig';
+import { Game } from '../scenes/Game';
 
 // New interface for wave state display configuration
 interface WaveStateDisplayConfig {
@@ -46,8 +46,11 @@ export class EnemySpawnSystem {
     private spawnState!: SpawnState;
     private difficultyLevel: number = 0;
     private difficultyTimer!: Phaser.Time.TimerEvent;
+    // timers are created and managed internally; references retained for lifecycle, may be unused in code paths
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private eliteTimer!: Phaser.Time.TimerEvent;
     private eliteAlive: boolean = false;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private bossTimer!: Phaser.Time.TimerEvent;
     private bossAlive: boolean = false;
 
@@ -217,6 +220,32 @@ export class EnemySpawnSystem {
         this.setupStateTimer(scaled.duration);
     }
 
+    // Helper to scale spawn config by difficulty (instance method)
+    private getScaledConfig(base: SpawnStateConfig): SpawnStateConfig {
+        const level = this.difficultyLevel as number;
+        const delayFactor = clamp(1 - 0.07 * level, 0.4, 1);
+        const extraCount = Math.floor(level / 2);
+        const tankBias = clamp(base.enemyChances.tank + 0.03 * level, 0, 0.8);
+        const fastBias = clamp(base.enemyChances.fast + 0.02 * level, 0, 0.9);
+        const cfg = SpawningConfig.getInstance();
+        const rate = Math.max(0.1, cfg.rateMultiplier || 1);
+        return {
+            ...base,
+            spawnDelay: Math.max(250, Math.floor((base.spawnDelay * delayFactor) / rate)),
+            spawnCount: base.spawnCount + extraCount,
+            enemyChances: {
+                fast: fastBias,
+                tank: tankBias,
+                ranged: Math.max(0, base.enemyChances.ranged || 0),
+                carrier: Math.max(0, base.enemyChances.carrier || 0),
+                toxic: Math.max(0, base.enemyChances.toxic || 0)
+            },
+            clusterType: base.clusterType,
+            duration: base.duration,
+            display: base.display
+        } as SpawnStateConfig;
+    }
+
     private setupSpawnTimer(delay: number): void {
         this.spawnTimer?.destroy();
         this.spawnTimer = this.scene.time.addEvent({
@@ -328,9 +357,13 @@ export class EnemySpawnSystem {
 
     private spawnClusterAround(cfg: SpawnStateConfig): void {
         // Spawn enemies in a ring around the player (or camera center if player missing)
-        const player: any = (this.scene as any).player;
-        const centerX = player?.x ?? this.scene.cameras.main.worldView.centerX;
-        const centerY = player?.y ?? this.scene.cameras.main.worldView.centerY;
+        let centerX = this.scene.cameras.main.worldView.centerX;
+        let centerY = this.scene.cameras.main.worldView.centerY;
+        if (this.scene instanceof Game) {
+            const p = this.scene.getPlayer();
+            centerX = p.x;
+            centerY = p.y;
+        }
         const radius = 400;
         for (let i = 0; i < cfg.spawnCount; i++) {
             const ang = Math.random() * Math.PI * 2;
@@ -345,11 +378,11 @@ export class EnemySpawnSystem {
         const type = this.getRandomEnemyType(cfg);
         let enemy: Enemy;
         if (type === EnemyType.RANGED) {
-            enemy = new RangedEnemy(this.scene, x, y) as unknown as Enemy;
+            enemy = new RangedEnemy(this.scene, x, y);
         } else if (type === EnemyType.CARRIER) {
-            enemy = new CarrierEnemy(this.scene, x, y) as unknown as Enemy;
+            enemy = new CarrierEnemy(this.scene, x, y);
         } else if (type === EnemyType.TOXIC) {
-            enemy = new ToxicTankEnemy(this.scene, x, y) as unknown as Enemy;
+            enemy = new ToxicTankEnemy(this.scene, x, y);
         } else {
             enemy = new Enemy(this.scene, x, y, type);
         }
@@ -389,7 +422,7 @@ export class EnemySpawnSystem {
         const wFast = Math.max(0, cfg.enemyChances.fast || 0);
         const wRanged = Math.max(0, cfg.enemyChances.ranged || 0);
         const wCarrier = Math.max(0, cfg.enemyChances.carrier || 0);
-        const wToxic = Math.max(0, (cfg as any).enemyChances.toxic || 0);
+        const wToxic = Math.max(0, cfg.enemyChances.toxic || 0);
         // Include a baseline BASIC weight for generic states only; exclude for "pack" waves
         const includeBaselineBasic = !(this.spawnState && this.spawnState.indexOf('pack') !== -1);
         const wBasic = includeBaselineBasic ? 1 : 0;
@@ -429,7 +462,7 @@ export class EnemySpawnSystem {
     }
 
     // New method to get the formatted wave state text
-    public getWaveStateDisplayConfig(state: string): WaveStateDisplayConfig {
+    public getWaveStateDisplayConfig(state: SpawnState): WaveStateDisplayConfig {
         const stateConfig = this.stateConfigs[state];
         if (stateConfig?.display) {
             return stateConfig.display;
@@ -449,7 +482,7 @@ export class EnemySpawnSystem {
     }
 
     // New method to get the formatted wave state text
-    public getFormattedWaveStateText(state: string): string {
+    public getFormattedWaveStateText(state: SpawnState): string {
         const displayConfig = this.getWaveStateDisplayConfig(state);
         return `${displayConfig.emoji ? displayConfig.emoji : ""} ${displayConfig.text} ${displayConfig.emoji ? displayConfig.emoji : ""}`;
     }
@@ -459,35 +492,3 @@ export class EnemySpawnSystem {
 function clamp(num: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, num));
 }
-
-// Attach to prototype for clarity
-(EnemySpawnSystem as any).prototype.getScaledConfig = function(base: SpawnStateConfig): SpawnStateConfig {
-    const level = this.difficultyLevel as number;
-    // Spawn delay shrinks toward 40% of original, 7% per level
-    const delayFactor = clamp(1 - 0.07 * level, 0.4, 1);
-    // Spawn count increases by 1 every 2 levels
-    const extraCount = Math.floor(level / 2);
-    // Bias toward tougher enemies slightly over time
-    const tankBias = clamp(base.enemyChances.tank + 0.03 * level, 0, 0.8);
-    const fastBias = clamp(base.enemyChances.fast + 0.02 * level, 0, 0.9);
-    // Apply tuner rate multiplier (higher = faster spawns => shorter delays)
-    const cfg = SpawningConfig.getInstance();
-    const rate = Math.max(0.1, cfg.rateMultiplier || 1);
-
-    return {
-        ...base,
-        spawnDelay: Math.max(250, Math.floor((base.spawnDelay * delayFactor) / rate)),
-        spawnCount: base.spawnCount + extraCount,
-        enemyChances: {
-            fast: fastBias,
-            tank: tankBias,
-            // Preserve ranged/carrier/toxic weights from the base config so pack waves still work
-            ranged: Math.max(0, base.enemyChances.ranged || 0),
-            carrier: Math.max(0, base.enemyChances.carrier || 0),
-            toxic: Math.max(0, (base.enemyChances as any).toxic || 0)
-        },
-        clusterType: base.clusterType,
-        duration: base.duration,
-        display: base.display
-    } as SpawnStateConfig;
-};

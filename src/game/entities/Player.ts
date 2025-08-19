@@ -17,7 +17,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     private lastLevel: number = 1;
     private healthRegenTimer: Phaser.Time.TimerEvent | null = null;
     private healthRegenAmount: number = 0;
-    private healthRegenInterval: number = 0;
+    // deprecated: interval stored in timer; no separate field needed
     private lastDamageSource: Enemy | null = null;
     private immunityTimer: Phaser.Time.TimerEvent | null = null;
     private readonly IMMUNITY_DURATION: number = 100; // 100ms immunity
@@ -283,7 +283,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         }
 
         this.healthRegenAmount = percentPerTick;
-        this.healthRegenInterval = intervalMs;
 
         // Create a new regeneration timer
         this.healthRegenTimer = this.scene.time.addEvent({

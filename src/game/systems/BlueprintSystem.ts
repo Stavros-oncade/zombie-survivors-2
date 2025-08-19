@@ -8,7 +8,7 @@ const STORAGE_POINTS = 'zs2_bp_points';
 export const BLUEPRINTS: Blueprint[] = [
   { id: 'bp_xp_boost', name: 'XP Booster', description: '+10% experience gain', cost: 3, apply: (game) => {
       const rs = game.getRelicSystemInternal();
-      (rs as any).xpMultiplier = (rs as any).xpMultiplier * 1.1;
+      rs.setXPMultiplier(rs.getXPMultiplier() * 1.1);
     } },
   { id: 'bp_hp_boost', name: 'Toughness', description: '+10% max HP', cost: 2, apply: (game) => {
       game.playerAdjustMaxHealth(1.1);

@@ -1,0 +1,166 @@
+{
+  "version": "0.1.0",
+  "generatedAt": "${BUILD_TIME}",
+  "cdnBaseUrl": "",
+  "entries": [
+    {
+      "id": "background",
+      "type": "image",
+      "category": "background",
+      "status": "present",
+      "urls": { "png": "assets/bg.png" },
+      "sizeKB": 557,
+      "required": true,
+      "description": "Parallaxable scene background.",
+      "guidelines": [
+        "Prefer WebP if quality allows.",
+        "Max 300 KB target for CDN version.",
+        "Avoid embedded metadata; trim transparent edges."
+      ]
+    },
+    {
+      "id": "player",
+      "type": "image",
+      "category": "player",
+      "status": "present",
+      "urls": { "png": "assets/player.png" },
+      "sizeKB": 26,
+      "required": true,
+      "description": "Top-down player sprite (neutral pose).",
+      "guidelines": [
+        "Max 32 KB.",
+        "Clear silhouette; readable at 64–96px height.",
+        "Transparent background."
+      ]
+    },
+    {
+      "id": "enemy",
+      "type": "image",
+      "category": "enemy",
+      "status": "present",
+      "urls": { "png": "assets/zombie.png" },
+      "sizeKB": 11,
+      "required": true,
+      "description": "Basic zombie enemy.",
+      "guidelines": [
+        "Max 24 KB.",
+        "Distinct from elite/ranged via shape and color."
+      ]
+    },
+    {
+      "id": "enemy_tank",
+      "type": "image",
+      "category": "enemy",
+      "status": "present",
+      "urls": { "png": "assets/tank.png" },
+      "sizeKB": 13,
+      "required": true,
+      "description": "Tank zombie (heavier silhouette).",
+      "guidelines": [
+        "Max 24 KB.",
+        "Wide, chunky silhouette; slower feel."
+      ]
+    },
+    {
+      "id": "enemy_fast",
+      "type": "image",
+      "category": "enemy",
+      "status": "present",
+      "urls": { "png": "assets/enemy_fast.png" },
+      "sizeKB": 12,
+      "required": true,
+      "description": "Fast zombie variant.",
+      "guidelines": [
+        "Max 24 KB.",
+        "Slim silhouette; conveys speed."
+      ]
+    },
+    {
+      "id": "projectile",
+      "type": "image",
+      "category": "projectile",
+      "status": "present",
+      "urls": { "png": "assets/plasma_bullet.png" },
+      "sizeKB": 3,
+      "required": true,
+      "description": "Default projectile (plasma bolt).",
+      "guidelines": [
+        "Max 6 KB.",
+        "16–32 px; high contrast; minimal blur."
+      ]
+    },
+    {
+      "id": "logo",
+      "type": "image",
+      "category": "ui",
+      "status": "present",
+      "urls": { "png": "assets/title.png" },
+      "sizeKB": 537,
+      "required": false,
+      "description": "Game title logo.",
+      "guidelines": [
+        "Prefer WebP for CDN; target ≤ 200 KB.",
+        "No alpha if not needed; trim margins."
+      ]
+    },
+    { "id": "pickup_health",   "type": "image", "category": "pickup", "status": "present", "urls": { "png": "assets/pickup_health.png" }, "sizeKB": 4, "required": true, "description": "Health pickup icon.", "guidelines": ["Max 8 KB.", "32–48 px; transparent bg."] },
+    { "id": "pickup_xp",       "type": "image", "category": "pickup", "status": "present", "urls": { "png": "assets/pickup_xp.png" },     "sizeKB": 3, "required": true, "description": "XP pickup icon.",     "guidelines": ["Max 8 KB.", "32–48 px; transparent bg."] },
+    { "id": "pickup_dmg",      "type": "image", "category": "pickup", "status": "present", "urls": { "png": "assets/pickup_dmg.png" },    "sizeKB": 3, "required": true, "description": "Damage pickup icon.", "guidelines": ["Max 8 KB.", "32–48 px; transparent bg."] },
+    { "id": "pickup_bomb",     "type": "image", "category": "pickup", "status": "present", "urls": { "png": "assets/pickup_bomb.png" },   "sizeKB": 3, "required": true, "description": "Bomb pickup icon.",   "guidelines": ["Max 8 KB.", "32–48 px; transparent bg."] },
+    { "id": "pickup_speed",    "type": "image", "category": "pickup", "status": "present", "urls": { "png": "assets/pickup_speed.png" },  "sizeKB": 4, "required": true, "description": "Speed pickup icon.",  "guidelines": ["Max 8 KB.", "32–48 px; transparent bg."] },
+
+    {
+      "id": "blueprint_drop",
+      "type": "image",
+      "category": "pickup",
+      "status": "missing",
+      "urls": { "webp": "pickups/blueprint_drop.webp" },
+      "sizeKB": 6,
+      "required": false,
+      "description": "Blueprint point pickup (cyan chip/scroll).",
+      "guidelines": [
+        "Max 8 KB.",
+        "Icon clarity at 32–48 px.",
+        "Transparent bg."
+      ]
+    },
+    {
+      "id": "explosion_small",
+      "type": "image",
+      "category": "vfx",
+      "status": "missing",
+      "urls": { "webp": "vfx/explosion_small.webp" },
+      "sizeKB": 20,
+      "required": false,
+      "description": "Compact explosion sprite used for AoE burst.",
+      "guidelines": [
+        "Max 24 KB.",
+        "Single frame; rely on tween for animation.",
+        "Avoid heavy soft glows."
+      ]
+    },
+    { "id": "enemy_ranged",  "type": "image", "category": "enemy", "status": "present", "urls": { "png": "assets/enemy_ranged.png" },  "sizeKB": 32, "pixel": { "width": 96, "height": 96, "scale": 1 }, "required": false, "description": "Slim ranged zombie with blue/cyan accents in aiming pose.", "guidelines": ["Max 32 KB.", "Distinct silhouette."] },
+    { "id": "enemy_carrier", "type": "image", "category": "enemy", "status": "present", "urls": { "png": "assets/enemy_carrier.png" }, "sizeKB": 36, "pixel": { "width": 96, "height": 96, "scale": 1 }, "required": false, "description": "Bulky zombie with asymmetrical sac/backpack-like growths.", "guidelines": ["Max 36 KB.", "Bulky torso silhouette."] },
+    { "id": "enemy_toxic",   "type": "image", "category": "enemy", "status": "present", "urls": { "png": "assets/enemy_toxic.png" },   "sizeKB": 36, "pixel": { "width": 96, "height": 96, "scale": 1 }, "required": false, "description": "Tank-adjacent zombie with contained toxic green highlights.", "guidelines": ["Max 36 KB.", "Readable green theme."] },
+    { "id": "enemy_elite",   "type": "image", "category": "enemy", "status": "present", "urls": { "png": "assets/enemy_elite.png" },   "sizeKB": 40, "pixel": { "width": 96, "height": 96, "scale": 1 }, "required": false, "description": "Slightly taller, sharper silhouette with restrained red accents.", "guidelines": ["Max 40 KB.", "Clear differentiation from basic."] },
+
+    { "id": "proj_piercing", "type": "image", "category": "projectile", "status": "missing", "urls": { "webp": "weapons/proj_piercing.webp" }, "sizeKB": 6, "required": false, "description": "Slim cyan bolt for piercing weapon.", "guidelines": ["Max 6 KB.", "16–24 px."] },
+    { "id": "proj_inferno",  "type": "image", "category": "projectile", "status": "missing", "urls": { "webp": "weapons/proj_inferno.webp" },  "sizeKB": 8, "required": false, "description": "Evolved inferno lance projectile (orange core).", "guidelines": ["Max 8 KB.", "16–24 px."] },
+
+    { "id": "relic_greed",         "type": "image", "category": "relic_icon", "status": "missing", "urls": { "webp": "icons/relic_greed.webp" },         "sizeKB": 8,  "required": false, "description": "Gold coin/laurel icon (XP/wealth).",           "guidelines": ["Max 8 KB.", "48x48 (1x).", "Transparent bg."] },
+    { "id": "relic_celerity",      "type": "image", "category": "relic_icon", "status": "missing", "urls": { "webp": "icons/relic_celerity.webp" },      "sizeKB": 8,  "required": false, "description": "Wing/boot icon (speed).",                       "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "relic_arsenal",       "type": "image", "category": "relic_icon", "status": "missing", "urls": { "webp": "icons/relic_arsenal.webp" },       "sizeKB": 8,  "required": false, "description": "Crossed blades (weapons).",                     "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "relic_warp_coils",    "type": "image", "category": "relic_icon", "status": "missing", "urls": { "webp": "icons/relic_warp_coils.webp" },    "sizeKB": 8,  "required": false, "description": "Coils/spiral (projectile speed).",             "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "relic_vitality",      "type": "image", "category": "relic_icon", "status": "missing", "urls": { "webp": "icons/relic_vitality.webp" },      "sizeKB": 8,  "required": false, "description": "Heart/shield (max HP).",                         "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "relic_sharpshooter",  "type": "image", "category": "relic_icon", "status": "missing", "urls": { "webp": "icons/relic_sharpshooter.webp" },  "sizeKB": 8,  "required": false, "description": "Sight/reticle (weapon damage).",               "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "relic_overclock",     "type": "image", "category": "relic_icon", "status": "missing", "urls": { "webp": "icons/relic_overclock.webp" },     "sizeKB": 8,  "required": false, "description": "Gauge/lightning (attack speed).",               "guidelines": ["Max 8 KB.", "48x48."] },
+
+    { "id": "upgrade_piercing",         "type": "image", "category": "upgrade_icon", "status": "missing", "urls": { "webp": "icons/upgrade_piercing.webp" },        "sizeKB": 8, "required": false, "description": "Piercing shot upgrade icon.",           "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "upgrade_explosive",        "type": "image", "category": "upgrade_icon", "status": "missing", "urls": { "webp": "icons/upgrade_explosive.webp" },       "sizeKB": 8, "required": false, "description": "Explosive burst upgrade icon.",        "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "upgrade_projectile",       "type": "image", "category": "upgrade_icon", "status": "missing", "urls": { "webp": "icons/upgrade_projectile.webp" },      "sizeKB": 8, "required": false, "description": "Projectile speed upgrade icon.",      "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "upgrade_weapon_damage",    "type": "image", "category": "upgrade_icon", "status": "missing", "urls": { "webp": "icons/upgrade_weapon_damage.webp" },   "sizeKB": 8, "required": false, "description": "Weapon damage upgrade icon.",        "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "upgrade_weapon_speed",     "type": "image", "category": "upgrade_icon", "status": "missing", "urls": { "webp": "icons/upgrade_weapon_speed.webp" },    "sizeKB": 8, "required": false, "description": "Weapon attack speed upgrade icon.",  "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "upgrade_speed",            "type": "image", "category": "upgrade_icon", "status": "missing", "urls": { "webp": "icons/upgrade_speed.webp" },           "sizeKB": 8, "required": false, "description": "Movement speed upgrade icon.",       "guidelines": ["Max 8 KB.", "48x48."] },
+    { "id": "upgrade_health",           "type": "image", "category": "upgrade_icon", "status": "missing", "urls": { "webp": "icons/upgrade_health.webp" },          "sizeKB": 8, "required": false, "description": "Health upgrade icon.",               "guidelines": ["Max 8 KB.", "48x48."] }
+  ]
+}

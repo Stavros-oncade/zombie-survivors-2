@@ -4,6 +4,8 @@ import { SceneKey } from '../config/SceneKeys';
 import { DefensiveSkillId, KillstreakPerkId } from '../types/GameTypes';
 
 export class Loadout extends Scene {
+  // Keep reference for future UI updates
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private title!: Phaser.GameObjects.Text;
   private buttons: Phaser.GameObjects.Text[] = [];
   private startButton!: Phaser.GameObjects.Text;
@@ -44,7 +46,7 @@ export class Loadout extends Scene {
 
     // Defensive Skill selection
     const lm2 = LoadoutManager.getInstance();
-    const defLabel = this.add.text(w/2, y + 20, 'Defensive Skill', { fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5);
+    this.add.text(w/2, y + 20, 'Defensive Skill', { fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5);
     y += 60;
     const defensiveOptions: Array<[string, DefensiveSkillId]> = [['Dash', DefensiveSkillId.DASH], ['Barrier', DefensiveSkillId.BARRIER], ['Repulse', DefensiveSkillId.REPULSE]];
     const updateDefensiveInfo = (id: DefensiveSkillId) => {
@@ -75,7 +77,7 @@ export class Loadout extends Scene {
     y += 54; // leave some space after instructions
 
     // Killstreak Perk selection
-    const ksLabel = this.add.text(w/2, y + 20, 'Killstreak Perk', { fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5);
+    this.add.text(w/2, y + 20, 'Killstreak Perk', { fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 }).setOrigin(0.5);
     y += 60;
     const updateKillstreakInfo = (id: KillstreakPerkId) => {
       const info = this.getKillstreakInstructions(id);
@@ -89,8 +91,12 @@ export class Loadout extends Scene {
         this.killstreakInfoText.setText(info);
       }
     };
-    [['Damage', KillstreakPerkId.DAMAGE], ['XP', KillstreakPerkId.XP], ['Speed', KillstreakPerkId.SPEED]].forEach(([name,id]) => {
-      const btn = this.add.text(w/2, y, name as string, { fontFamily: 'Arial', fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    (['Damage','XP','Speed'] as const).forEach((name) => {
+      const id: KillstreakPerkId =
+        name === 'Damage' ? KillstreakPerkId.DAMAGE :
+        name === 'XP' ? KillstreakPerkId.XP :
+        KillstreakPerkId.SPEED;
+      const btn = this.add.text(w/2, y, name, { fontFamily: 'Arial', fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       const upd = () => btn.setStyle({ color: lm2.getKillstreakPerk() === id ? '#00ff88' : '#ffffff' });
       upd();
       btn.on('pointerdown', () => { lm2.setKillstreakPerk(id); this.killstreakButtons.forEach(() => {}); upd(); updateKillstreakInfo(id); });

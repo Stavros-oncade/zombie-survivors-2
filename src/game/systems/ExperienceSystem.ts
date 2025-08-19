@@ -2,6 +2,8 @@ import { Player } from '../entities/Player';
 import { GameConstants } from '../config/GameConstants';
 
 export class ExperienceSystem {
+    // Currently unused but kept for potential mechanics; suppress unused warning
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private player: Player;
     private currentLevel: number = 1;
     private currentExperience: number = 0;

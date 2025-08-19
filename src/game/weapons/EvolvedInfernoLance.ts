@@ -45,17 +45,18 @@ export class EvolvedInfernoLance implements IWeapon {
     scene.physics.add.existing(proj);
     proj.setRotation(angle);
     (proj.body as Phaser.Physics.Arcade.Body).setVelocity(Math.cos(angle) * this.projectileSpeed, Math.sin(angle) * this.projectileSpeed);
-    (proj as any).__pierced = 0;
+    proj.setDataEnabled();
+    proj.data?.set('__pierced', 0);
 
     enemies.forEach(enemy => {
       scene.physics.add.overlap(proj, enemy, () => {
         if (!enemy.active || !proj.active) return;
-        const pierced = (proj as any).__pierced as number;
+        const pierced = (proj.data?.get('__pierced') as number) ?? 0;
         enemy.takeDamage(this.getDamage());
-        (proj as any).__pierced = pierced + 1;
+        proj.data?.set('__pierced', pierced + 1);
         // Create a small explosion at enemy position
         createMiniExplosion(scene, enemy.x, enemy.y);
-        if ((proj as any).__pierced >= this.pierceCount) {
+        if (((proj.data?.get('__pierced') as number) ?? 0) >= this.pierceCount) {
           proj.destroy();
         }
       });

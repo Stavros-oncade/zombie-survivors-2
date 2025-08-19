@@ -8,8 +8,11 @@ export class PickupAssetGenerator {
     }
 
     public generatePickupAssets(): void {
+        // Placeholder: textures are preloaded via assets; keep method for future procedural generation
     }
 
+    // Reserved for future use
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private generatePickupTexture(key: string, color: number): void {
         // Create a graphics object
         const graphics = this.scene.add.graphics();

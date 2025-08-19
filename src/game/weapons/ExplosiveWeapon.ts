@@ -42,10 +42,15 @@ export class ExplosiveWeapon implements IWeapon {
     if (affected.length > 0) {
       if (scene.textures.exists('explosion_small')) {
         const s = scene.add.sprite(px, py, 'explosion_small');
+        s.setOrigin(0.5, 0.5).setScrollFactor(1);
         s.setScale(Math.max(0.5, this.range / 160));
+        // Ensure no physics moves this visual
+        const body = s.body as (Phaser.Physics.Arcade.Body | undefined);
+        if (body) { body.setVelocity(0, 0); body.allowGravity = false; body.moves = false; }
         scene.tweens.add({ targets: s, alpha: 0, scale: 1.35, duration: 220, onComplete: () => s.destroy() });
       } else {
         const g = scene.add.graphics();
+        g.setScrollFactor(1);
         g.fillStyle(0xffaa00, 0.25);
         g.fillCircle(px, py, this.range);
         scene.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() });

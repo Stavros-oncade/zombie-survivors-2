@@ -1,4 +1,7 @@
 import { Scene } from 'phaser';
+
+interface AssetManifestEntry { id: string; type: string; status: string; urls?: { webp?: string; png?: string } }
+interface AssetManifest { cdnBaseUrl?: string; entries?: AssetManifestEntry[] }
 import { SceneKey } from '../config/SceneKeys';
 
 export class Preloader extends Scene
@@ -51,23 +54,47 @@ export class Preloader extends Scene
             progressBar.fillRect(width / 2 - 150, height / 2 - 15, 300 * value, 30);
         });
 
-        this.load.on('complete', () => {
+        // Phase 1: queue manifest only
+        const manifestUrl = import.meta.env.VITE_ASSET_MANIFEST_URL || '/content.manifest.json';
+        this.load.json('asset_manifest', manifestUrl);
+
+        // When the manifest file completes, enqueue its assets into the same load cycle
+        this.load.once('filecomplete-json-asset_manifest', () => {
+            try {
+                const manifest = this.cache.json.get('asset_manifest') as AssetManifest | undefined;
+                const base = (manifest?.cdnBaseUrl || '').replace(/\/+$/, '');
+                if (manifest && Array.isArray(manifest.entries)) {
+                    (manifest.entries as AssetManifestEntry[]).forEach((e) => {
+                        if (e.status !== 'present') return;
+                        if (e.type === 'image' && e.urls) {
+                            const path = e.urls.webp || e.urls.png;
+                            if (!path) return;
+                            const url = base ? `${base}/${path}` : path;
+                            this.load.image(e.id, url);
+                        }
+                    });
+                } else {
+                    this.enqueueDefaultLocalAssets();
+                }
+            } catch (err) {
+                console.warn('[Preloader] Failed to process manifest; falling back to local assets', err);
+                this.enqueueDefaultLocalAssets();
+            }
+        });
+
+        // Destroy progress UI when the full queue completes
+        this.load.once('complete', () => {
             progressBar.destroy();
             progressBox.destroy();
             loadingText.destroy();
         });
+    }
 
-        // Load game assets
+    private enqueueDefaultLocalAssets(): void {
         this.load.image('player', 'assets/player.png');
         this.load.image('enemy', 'assets/zombie.png');
         this.load.image('enemy_tank', 'assets/tank.png');
         this.load.image('enemy_fast', 'assets/enemy_fast.png');
-        // Optional ranged enemy sprite
-        // this.load.image('enemy_ranged', 'assets/enemy_ranged.png');
-        // Optional carrier enemy sprite
-        // this.load.image('enemy_carrier', 'assets/enemy_carrier.png');
-        // Toxic tank uses tank sprite; optional: distinct toxic sprite
-        // this.load.image('enemy_toxic', 'assets/enemy_toxic.png');
         this.load.image('projectile', 'assets/plasma_bullet.png');
         this.load.image('logo', 'assets/title.png');
         this.load.image('pickup_health', 'assets/pickup_health.png');
@@ -75,30 +102,6 @@ export class Preloader extends Scene
         this.load.image('pickup_dmg', 'assets/pickup_dmg.png');
         this.load.image('pickup_bomb', 'assets/pickup_bomb.png');
         this.load.image('pickup_speed', 'assets/pickup_speed.png');
-
-        // Optional new assets (provide these files to improve visuals):
-        // Weapons / VFX
-        // this.load.image('proj_piercing', 'assets/proj_piercing.png');
-        // this.load.image('proj_inferno', 'assets/proj_inferno.png');
-        // this.load.image('explosion_small', 'assets/explosion_small.png');
-        // Enemies
-        // this.load.image('enemy_elite', 'assets/enemy_elite.png');
-        // Relic icons
-        // this.load.image('relic_greed', 'assets/relic_greed.png');
-        // this.load.image('relic_celerity', 'assets/relic_celerity.png');
-        // this.load.image('relic_arsenal', 'assets/relic_arsenal.png');
-        // this.load.image('relic_warp_coils', 'assets/relic_warp_coils.png');
-        // this.load.image('relic_vitality', 'assets/relic_vitality.png');
-        // this.load.image('relic_sharpshooter', 'assets/relic_sharpshooter.png');
-        // this.load.image('relic_overclock', 'assets/relic_overclock.png');
-        // Upgrade icons
-        // this.load.image('upgrade_piercing', 'assets/upgrade_piercing.png');
-        // this.load.image('upgrade_explosive', 'assets/upgrade_explosive.png');
-        // this.load.image('upgrade_projectile', 'assets/upgrade_projectile.png');
-        // this.load.image('upgrade_weapon_damage', 'assets/upgrade_weapon_damage.png');
-        // this.load.image('upgrade_weapon_speed', 'assets/upgrade_weapon_speed.png');
-        // this.load.image('upgrade_speed', 'assets/upgrade_speed.png');
-        // this.load.image('upgrade_health', 'assets/upgrade_health.png');
     }
 
     create ()
@@ -107,7 +110,7 @@ export class Preloader extends Scene
         //  For example, you can define global animations here, so we can use them in other scenes.
 
         //  Move to the MainMenu. You could also swap this for a Scene Transition, such as a camera fade.
-        // Generate placeholder textures for any missing icons so the UI can still render
+        // Generate placeholder textures so the UI and enemies can still render
         const ensureIcon = (key: string, color: number) => {
             if (this.textures.exists(key)) return;
             const g = this.add.graphics();

@@ -1,8 +1,8 @@
 import { OncadeSDK, PurchaseItem } from '@oncade/sdk';
 
 // Load config from Vite env (must be prefixed with VITE_)
-const ONCADE_API_KEY = (import.meta as any).env?.VITE_ONCADE_API_KEY as string | undefined;
-const ONCADE_GAME_ID = (import.meta as any).env?.VITE_ONCADE_GAME_ID as string | undefined;
+const ONCADE_API_KEY = import.meta.env.VITE_ONCADE_API_KEY as (string | undefined);
+const ONCADE_GAME_ID = import.meta.env.VITE_ONCADE_GAME_ID as (string | undefined);
 
 // Lazily instantiate SDK once env is verified
 let sdk: OncadeSDK | null = null;
@@ -123,7 +123,7 @@ async function openTipUrl(): Promise<void> {
     if (!sdk) return;
     const tipUrl = await sdk.getTipURL({
        redirectUrl: redirectUrl,
-       gameId: ONCADE_GAME_ID
+       gameId: ONCADE_GAME_ID ?? ''
     });
 
     if (tipUrl) {
@@ -223,7 +223,7 @@ async function openLoginUrl(): Promise<void> {
      const redirectUrl = `${window.location.origin}/login-success`;
      const loginUrl = await sdk.getLoginURL({
         redirectUrl: redirectUrl,
-        gameId: ONCADE_GAME_ID,
+        gameId: ONCADE_GAME_ID ?? '',
         sessionToken: sessionInfo.sessionToken // Added sessionToken
      });
 

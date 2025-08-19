@@ -848,6 +848,7 @@ export class Game extends Scene {
         // Create explosion visual effect
         const explosion = this.add.graphics();
         explosion.setDepth(ExplosionConfig.VISUAL.MAIN.DEPTH);
+        explosion.setScrollFactor(1);
         explosion.fillStyle(ExplosionConfig.VISUAL.MAIN.OUTER_COLOR, ExplosionConfig.VISUAL.MAIN.OUTER_ALPHA);
         explosion.fillCircle(x, y, explosionRadius);
         
@@ -872,6 +873,7 @@ export class Game extends Scene {
             
             const particle = this.add.graphics();
             particle.setDepth(ExplosionConfig.VISUAL.PARTICLES.DEPTH);
+            particle.setScrollFactor(1);
             particle.fillStyle(ExplosionConfig.VISUAL.PARTICLES.COLOR, ExplosionConfig.VISUAL.PARTICLES.ALPHA);
             particle.fillCircle(0, 0, ExplosionConfig.VISUAL.PARTICLES.SIZE);
             

@@ -1,8 +1,7 @@
 import { Player } from '../entities/Player';
 import { Upgrade, UpgradeId } from '../types/GameTypes';
 import { SceneKey } from '../config/SceneKeys';
-import { GameConstants } from '../config/GameConstants';
-import { RELICS } from './RelicSystem';
+import { RELICS, Relic } from './RelicSystem';
 import { Game } from '../scenes/Game';
 
 export class UpgradeSystem {
@@ -55,8 +54,10 @@ export class UpgradeSystem {
             name: 'Piercing Shot',
             description: 'Unlocks or upgrades a piercing projectile weapon',
             effect: (player: Player) => {
-                const game = player.scene.scene.get(SceneKey.Game) as Game;
-                game.getWeaponSystem().unlockPiercing();
+                const sc = player.scene?.scene?.get(SceneKey.Game);
+                if (sc && sc instanceof Game) {
+                    sc.getWeaponSystem().unlockPiercing();
+                }
             }
         },
         {
@@ -64,8 +65,10 @@ export class UpgradeSystem {
             name: 'Explosive Burst',
             description: 'Unlocks or upgrades a short-range explosive burst',
             effect: (player: Player) => {
-                const game = player.scene.scene.get(SceneKey.Game) as Game;
-                game.getWeaponSystem().unlockExplosive();
+                const sc = player.scene?.scene?.get(SceneKey.Game);
+                if (sc && sc instanceof Game) {
+                    sc.getWeaponSystem().unlockExplosive();
+                }
             }
         },
         {
@@ -101,7 +104,7 @@ export class UpgradeSystem {
     public static getRandomRelicUpgradesFiltered(count: number, acquired?: Set<string>): Upgrade[] {
         // Weighted selection from RELICS, skipping acquired
         const working = RELICS.filter(r => !acquired || !acquired.has(r.id));
-        const selected: typeof RELICS = [] as any;
+        const selected: Relic[] = [];
         while (selected.length < count && working.length > 0) {
             const totalWeight = working.reduce((sum, r) => sum + r.weight, 0);
             let roll = Math.random() * totalWeight;
@@ -118,9 +121,9 @@ export class UpgradeSystem {
             name: `${r.name} [${r.rarity}]`,
             description: r.description,
             effect: (player: Player) => {
-                const game = player.scene.scene.get(SceneKey.Game) as any;
-                if (game && game.getRelicSystem) {
-                    game.getRelicSystem().acquireRelic(r.id);
+                const sc = player.scene?.scene?.get(SceneKey.Game);
+                if (sc && sc instanceof Game) {
+                    sc.getRelicSystem().acquireRelic(r.id);
                 }
             }
         }));

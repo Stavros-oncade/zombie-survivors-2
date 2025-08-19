@@ -6,16 +6,16 @@ import { SceneKey } from '../config/SceneKeys';
 export class SpawnTuner extends Scene {
   constructor() { super(SceneKey.SpawnTuner); }
 
-  private rateText!: Phaser.GameObjects.Text;
-  private eliteToggleText!: Phaser.GameObjects.Text;
-  private bossToggleText!: Phaser.GameObjects.Text;
-  private startStateText!: Phaser.GameObjects.Text;
+  private rateText?: Phaser.GameObjects.Text;
+  private eliteToggleText?: Phaser.GameObjects.Text;
+  private bossToggleText?: Phaser.GameObjects.Text;
+  private startStateText?: Phaser.GameObjects.Text;
 
   create() {
     // Clean up any stale references from a previous run
-    this.eliteToggleText = undefined as any;
-    this.bossToggleText = undefined as any;
-    this.startStateText = undefined as any;
+    this.eliteToggleText = undefined;
+    this.bossToggleText = undefined;
+    this.startStateText = undefined;
 
     const cfg = SpawningConfig.getInstance();
     const w = this.cameras.main.width;
@@ -30,7 +30,7 @@ export class SpawnTuner extends Scene {
       fontFamily: 'Arial Black', fontSize: '22px', color: '#ffffff', stroke: '#000000', strokeThickness: 4
     }).setOrigin(0.5);
 
-    this.rateText = this.add.text(w/2, 150, `Current: ${cfg.rateMultiplier.toFixed(2)}x`, {
+    this.rateText = this.add.text(w/2, 150, `Current: ${cfg.rateMultiplier?.toFixed(2) ?? '1.00'}x`, {
       fontFamily: 'Arial', fontSize: '20px', color: '#ffeb99', stroke: '#000000', strokeThickness: 3
     }).setOrigin(0.5);
 
@@ -39,7 +39,7 @@ export class SpawnTuner extends Scene {
         .setOrigin(0.5).setInteractive({ useHandCursor: true })
         .on('pointerover', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffff00' }); })
         .on('pointerout', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffffff' }); })
-        .on('pointerdown', () => { cfg.rateMultiplier = value; this.rateText.setText(`Current: ${cfg.rateMultiplier.toFixed(2)}x`); });
+        .on('pointerdown', () => { cfg.rateMultiplier = value; this.rateText?.setText(`Current: ${cfg.rateMultiplier.toFixed(2)}x`); });
     };
     const rowY = 190;
     makeRateButton('0.5x', 0.5, w/2 - 200, rowY);
@@ -87,10 +87,10 @@ export class SpawnTuner extends Scene {
     };
     drawToggleText();
 
-    const eliteBtn = this.add.text(w/2 - 120, 345, 'Toggle Elite', { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff', stroke: '#000000', strokeThickness: 3, backgroundColor: '#333', padding: { x: 10, y: 6 } })
+    this.add.text(w/2 - 120, 345, 'Toggle Elite', { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff', stroke: '#000000', strokeThickness: 3, backgroundColor: '#333', padding: { x: 10, y: 6 } })
       .setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerdown', () => { cfg.spawnEliteOnStart = !cfg.spawnEliteOnStart; drawToggleText(); });
-    const bossBtn = this.add.text(w/2 + 120, 345, 'Toggle Boss', { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff', stroke: '#000000', strokeThickness: 3, backgroundColor: '#333', padding: { x: 10, y: 6 } })
+    this.add.text(w/2 + 120, 345, 'Toggle Boss', { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff', stroke: '#000000', strokeThickness: 3, backgroundColor: '#333', padding: { x: 10, y: 6 } })
       .setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerdown', () => { cfg.spawnBossOnStart = !cfg.spawnBossOnStart; drawToggleText(); });
 
@@ -148,14 +148,14 @@ export class SpawnTuner extends Scene {
 
     // On shutdown/destroy, clear references so we don't hold onto destroyed objects
     this.events.once('shutdown', () => {
-      this.eliteToggleText = undefined as any;
-      this.bossToggleText = undefined as any;
-      this.startStateText = undefined as any;
+      this.eliteToggleText = undefined;
+      this.bossToggleText = undefined;
+      this.startStateText = undefined;
     });
     this.events.once('destroy', () => {
-      this.eliteToggleText = undefined as any;
-      this.bossToggleText = undefined as any;
-      this.startStateText = undefined as any;
+      this.eliteToggleText = undefined;
+      this.bossToggleText = undefined;
+      this.startStateText = undefined;
     });
   }
 }

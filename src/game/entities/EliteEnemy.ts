@@ -32,6 +32,10 @@ export class EliteEnemy extends Enemy {
   private makeElite(): void {
     // Beef up stats relative to base
     // Using inherited setters is limited, but we can scale visually and FX
+    // Swap to elite texture if provided by content pack
+    if (this.scene.textures.exists('enemy_elite')) {
+      this.setTexture('enemy_elite');
+    }
     this.setScale(0.7);
     this.setTint(0xff4444);
     // Greatly increase elite health (10x)

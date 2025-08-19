@@ -36,11 +36,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             case EnemyType.FAST:
                 return 'enemy_fast';
             case EnemyType.RANGED:
-                return 'enemy';
+                return 'enemy_ranged';
             case EnemyType.CARRIER:
-                return 'enemy';
+                return 'enemy_carrier';
             case EnemyType.TOXIC:
-                return 'enemy_tank';
+                return 'enemy_toxic';
             default:
                 return 'enemy';
         }
@@ -135,10 +135,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
      * Returns true if the effect was applied.
      */
     public tryAddGlow(color: number, distance: number, _quality: number, knockout: boolean, alpha: number, strength: number): boolean {
-        type GlowCapable = { preFX?: { addGlow?: (color: number, distance: number, quality: number, knockout: boolean, alpha: number, strength: number) => void } };
-        const selfMaybeWithPreFX = this as unknown as GlowCapable;
-        if (selfMaybeWithPreFX.preFX && typeof selfMaybeWithPreFX.preFX.addGlow === 'function') {
-            selfMaybeWithPreFX.preFX.addGlow(color, distance, 0, knockout, alpha, strength);
+        // Use optional chaining; Phaser may or may not have preFX in this runtime
+        const addGlow = this.preFX?.addGlow as ((color: number, distance: number, quality: number, knockout: boolean, alpha: number, strength: number) => void) | undefined;
+        if (typeof addGlow === 'function') {
+            addGlow(color, distance, 0, knockout, alpha, strength);
             return true;
         }
         return false;
