@@ -1,5 +1,6 @@
 import { GameConstants } from '../config/GameConstants';
 import { EnemyType, PickupType } from '../types/GameTypes';
+import { KillClass } from '../types/MissionTypes';
 // Note: base methods accept Phaser sprites to avoid tight coupling
 import { DeathEffect } from '../effects/DeathEffect';
 import { Pickup } from './Pickup';
@@ -15,6 +16,17 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     protected enemyType: EnemyType;
     private isStunned: boolean = false;
     private stunTimer: Phaser.Time.TimerEvent | null = null;
+    private baseSpeed: number | null = null;
+    private slowTimer: Phaser.Time.TimerEvent | null = null;
+    // Rally (Shrieker aura) snapshot. Kept separate from the slow snapshot so the
+    // two buffs/debuffs don't clobber each other's baseline. Both speed and damage
+    // are snapshotted on first application and restored when the refresh stops.
+    private rallyBaseSpeed: number | null = null;
+    private rallyBaseDamage: number | null = null;
+    private rallyTimer: Phaser.Time.TimerEvent | null = null;
+    private isDoubleSpeed = false;
+    private doubleSpeedGlow: Phaser.GameObjects.Sprite | null = null;
+    private doubleSpeedGlowEvent?: Phaser.Time.TimerEvent;
     private readonly damageFlashMatrix = [
         1, 0, 0, 0, 0,   // Red channel unchanged
         0.3, 0.3, 0.3, 0, 0, // Green channel dimmed (30% of original)
@@ -88,6 +100,15 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
                 this.damage = 7;
                 this.experienceValue = 35;
                 break;
+            case EnemyType.SHRIEKER:
+                // Fragile, slow, but high-value: the design wants it to lurk at the
+                // back of a pack so auto-fire kills it last. High XP rewards the
+                // player for repositioning to prioritize it.
+                this.health = GameConstants.ENEMIES.BASE_HEALTH * 0.5;
+                this.speed = GameConstants.ENEMIES.INITIAL_SPEED * 0.6;
+                this.damage = 4;
+                this.experienceValue = 60;
+                break;
             default: // BASIC
                 this.health = GameConstants.ENEMIES.BASE_HEALTH;
                 this.speed = GameConstants.ENEMIES.INITIAL_SPEED;
@@ -114,6 +135,85 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     /**
+     * Apply a temporary movement slow (e.g. Frost Mine). `factor` is the fraction
+     * of base speed to keep (0.6 = 40% slow). Refreshing extends the duration off
+     * the original base speed so repeated applications never compound permanently.
+     */
+    public applySlow(factor: number, durationMs: number): void {
+        // Guard against a slow applied to an enemy that was just killed/destroyed
+        // (Phaser nulls `scene` on destroy, so `this.scene.time` would throw).
+        if (!this.active || !this.scene) return;
+        if (this.baseSpeed === null) this.baseSpeed = this.speed;
+        this.speed = this.baseSpeed * Phaser.Math.Clamp(factor, 0.05, 1);
+        this.slowTimer?.remove(false);
+        this.slowTimer = this.scene.time.delayedCall(durationMs, () => {
+            if (this.baseSpeed !== null) this.speed = this.baseSpeed;
+            this.baseSpeed = null;
+            this.slowTimer = null;
+        });
+    }
+
+    /**
+     * Apply a temporary "rally" buff (Shrieker aura). `factor` (>1) is the speed
+     * multiplier off the original base speed; damage is scaled up by a derived
+     * factor. Mirrors applySlow() exactly: the first application snapshots the
+     * baseline once, every subsequent call recomputes from that SAME snapshot (so
+     * repeated per-frame calls never compound), and a single refresh timer reverts
+     * to baseline when the Shrieker stops refreshing (death / enemy leaves aura).
+     */
+    public applyRally(factor: number, durationMs: number): void {
+        // Guard against a rally applied to an enemy that was just killed/destroyed
+        // (Phaser nulls `scene` on destroy, so `this.scene.time` would throw).
+        if (!this.active || !this.scene) return;
+        // Snapshot the un-buffed baselines exactly once. While the buff is live the
+        // snapshot is non-null, so the values below are always derived from the
+        // ORIGINAL baseline rather than the already-buffed current values.
+        if (this.rallyBaseSpeed === null) this.rallyBaseSpeed = this.speed;
+        if (this.rallyBaseDamage === null) this.rallyBaseDamage = this.damage;
+        const speedFactor = Phaser.Math.Clamp(factor, 1, 3);
+        // Damage scales more gently than speed (e.g. 1.4x speed -> ~1.3x damage).
+        const dmgFactor = 1 + (speedFactor - 1) * 0.75;
+        this.speed = this.rallyBaseSpeed * speedFactor;
+        this.damage = this.rallyBaseDamage * dmgFactor;
+        this.rallyTimer?.remove(false);
+        this.rallyTimer = this.scene.time.delayedCall(durationMs, () => {
+            if (this.rallyBaseSpeed !== null) this.speed = this.rallyBaseSpeed;
+            if (this.rallyBaseDamage !== null) this.damage = this.rallyBaseDamage;
+            this.rallyBaseSpeed = null;
+            this.rallyBaseDamage = null;
+            this.rallyTimer = null;
+        });
+    }
+
+    /**
+     * Rare "double speed" variant modifier. Orthogonal to base type: multiplies
+     * this enemy's base speed and marks it with a red outline so it reads as a
+     * threat without recoloring the sprite. Idempotent — repeated calls no-op.
+     */
+    public makeDoubleSpeed(): void {
+        if (this.isDoubleSpeed) return;
+        this.isDoubleSpeed = true;
+        this.speed *= GameConstants.ENEMIES.DOUBLE_SPEED_MULTIPLIER;
+
+        const color = GameConstants.ENEMIES.DOUBLE_SPEED_OUTLINE_COLOR;
+        // Tight preFX glow tuned to read as a red outline rather than a soft halo.
+        const hadGlow = this.tryAddGlow(color, 4, 0, false, 0.6, 12);
+        if (!hadGlow) {
+            // Fallback for environments without preFX (e.g., Canvas renderer):
+            // an ADD-blended, tinted copy of the sprite behind the original.
+            this.doubleSpeedGlow = this.scene.add.sprite(this.x, this.y, this.texture.key);
+            this.doubleSpeedGlow.setScale(this.scaleX * 1.2, this.scaleY * 1.2);
+            this.doubleSpeedGlow.setTint(color).setAlpha(0.5);
+            this.doubleSpeedGlow.setBlendMode(Phaser.BlendModes.ADD);
+            this.doubleSpeedGlow.setDepth(this.depth - 1);
+            // Follow position periodically
+            this.doubleSpeedGlowEvent = this.scene.time.addEvent({ delay: 16, loop: true, callback: () => {
+                if (this.doubleSpeedGlow && this.active) this.doubleSpeedGlow.setPosition(this.x, this.y);
+            }});
+        }
+    }
+
+    /**
      * Adjust current health directly. Clamped to [0, maxHealth].
      */
     public setHealth(value: number): void {
@@ -135,10 +235,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
      * Returns true if the effect was applied.
      */
     public tryAddGlow(color: number, distance: number, _quality: number, knockout: boolean, alpha: number, strength: number): boolean {
-        // Use optional chaining; Phaser may or may not have preFX in this runtime
-        const addGlow = this.preFX?.addGlow as ((color: number, distance: number, quality: number, knockout: boolean, alpha: number, strength: number) => void) | undefined;
-        if (typeof addGlow === 'function') {
-            addGlow(color, distance, 0, knockout, alpha, strength);
+        // preFX is only present under the WebGL renderer. Call addGlow on the
+        // component itself so `this` stays bound (Phaser's addGlow does `this.add(...)`).
+        if (this.preFX && typeof this.preFX.addGlow === 'function') {
+            this.preFX.addGlow(color, distance, 0, knockout, alpha, strength);
             return true;
         }
         return false;
@@ -200,22 +300,54 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             this.dropPickup();
         }
         
-        // Emit event for experience gain
+        // Emit event for experience gain (XP / killstreak / level-up logic; unchanged)
         this.scene.events.emit('enemyKilled', this.experienceValue);
+        // Richer, classified death signal for the Mission System. Kept separate so
+        // the existing enemyKilled event (and its consumers) stay untouched. Uses a
+        // virtual getKillClass() so elites/bosses classify correctly despite being
+        // constructed with a base EnemyType.
+        const cls = this.getKillClass();
+        this.scene.events.emit('enemyKilledClassified', {
+            type: cls.type,
+            isElite: cls.isElite,
+            isBoss: cls.isBoss,
+            xp: this.experienceValue,
+            x: this.x,
+            y: this.y,
+        });
         this.destroy();
+    }
+
+    /**
+     * Classification used by the Mission System. Base enemies report their own
+     * type and are neither elite nor boss; EliteEnemy / BossEnemy override this.
+     * Public so the mission board-clear scan can classify live enemies.
+     */
+    public getKillClass(): KillClass {
+        return { type: this.enemyType, isElite: false, isBoss: false };
     }
     
     private dropPickup(): void {
-        // Randomly select a pickup type
-        const pickupTypes = [
-            PickupType.HEALTH,
-            PickupType.SPEED,
-            PickupType.DAMAGE,
-            PickupType.EXPERIENCE,
-            PickupType.BOMB
+        // Weighted random selection. AIRSTRIKE is very powerful, so it is rare.
+        const weightedPickups: Array<{ type: PickupType; weight: number }> = [
+            { type: PickupType.HEALTH, weight: 20 },
+            { type: PickupType.SPEED, weight: 20 },
+            { type: PickupType.DAMAGE, weight: 20 },
+            { type: PickupType.EXPERIENCE, weight: 20 },
+            { type: PickupType.BOMB, weight: 18 },
+            { type: PickupType.AIRSTRIKE, weight: 2 } // Rare, powerful pickup
         ];
-        
-        const randomType = pickupTypes[Math.floor(Math.random() * pickupTypes.length)];
+
+        const totalWeight = weightedPickups.reduce((sum, p) => sum + p.weight, 0);
+        let roll = Math.random() * totalWeight;
+        let randomType = weightedPickups[0].type;
+        for (const entry of weightedPickups) {
+            roll -= entry.weight;
+            if (roll < 0) {
+                randomType = entry.type;
+                break;
+            }
+        }
         
         // Create the pickup at the enemy's position
         const pickup = new Pickup(this.scene, this.x, this.y, randomType);
@@ -237,6 +369,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     public getDamage(): number {
         return this.damage;
+    }
+
+    /** Scale contact damage (Expedition FEROCITY risk modifier, §8). */
+    public scaleDamage(mult: number): void {
+        this.damage = Math.max(1, Math.round(this.damage * mult));
     }
 
     public applyKnockback(force: number, angle: number): void {
@@ -281,7 +418,27 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             this.stunTimer.destroy();
             this.stunTimer = null;
         }
-        
+
+        // Clean up the slow / rally refresh timers (scene-owned delayedCalls).
+        if (this.slowTimer) {
+            this.slowTimer.remove(false);
+            this.slowTimer = null;
+        }
+        if (this.rallyTimer) {
+            this.rallyTimer.remove(false);
+            this.rallyTimer = null;
+        }
+
+        // Tear down the double-speed fallback halo (scene-owned, not a child).
+        if (this.doubleSpeedGlowEvent) {
+            this.doubleSpeedGlowEvent.destroy();
+            this.doubleSpeedGlowEvent = undefined;
+        }
+        if (this.doubleSpeedGlow) {
+            this.doubleSpeedGlow.destroy();
+            this.doubleSpeedGlow = null;
+        }
+
         super.destroy(fromScene);
     }
 } 

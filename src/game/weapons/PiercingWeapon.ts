@@ -46,29 +46,39 @@ export class PiercingWeapon implements IWeapon {
     const tex = scene.textures.exists('proj_piercing') ? 'proj_piercing' : 'projectile';
     const proj = scene.add.sprite(spawnX, spawnY, tex);
     scene.physics.add.existing(proj);
+    proj.setScale(0.5); // Match game art scale; the 'projectile' fallback is 64px and would otherwise render oversized
     proj.setRotation(angle);
     (proj.body as Phaser.Physics.Arcade.Body).setVelocity(Math.cos(angle) * this.projectileSpeed, Math.sin(angle) * this.projectileSpeed);
 
     // Track how many enemies pierced using data manager to avoid any-casts
     proj.setDataEnabled();
     proj.data?.set('__pierced', 0);
-    // Add overlap for each enemy
+    // Add overlap for each enemy. Track the overlaps so they are removed when the
+    // projectile dies; otherwise every shot leaks per-enemy overlaps that keep
+    // firing on destroyed projectiles/enemies.
+    const overlaps: Phaser.Physics.Arcade.Collider[] = [];
+    const destroyProj = () => {
+      overlaps.forEach(o => o.destroy());
+      overlaps.length = 0;
+      if (proj && proj.active) proj.destroy();
+    };
     enemies.forEach(enemy => {
-      scene.physics.add.overlap(proj, enemy, () => {
+      const overlap = scene.physics.add.overlap(proj, enemy, () => {
         if (!enemy.active || !proj.active) return;
         const pierced = (proj.data?.get('__pierced') as number) ?? 0;
         enemy.takeDamage(this.getDamage());
         proj.data?.set('__pierced', pierced + 1);
         if (((proj.data?.get('__pierced') as number) ?? 0) >= this.pierceCount) {
-          proj.destroy();
+          destroyProj();
         }
       });
+      overlaps.push(overlap);
     });
 
     // Lifetime: limit by max range (3x bomb radius)
     const maxDistance = ExplosionConfig.RADIUS * 3;
     const maxLifetime = Math.ceil((maxDistance / this.projectileSpeed) * 1000);
-    scene.time.delayedCall(Math.min(3000, maxLifetime), () => proj?.destroy());
+    scene.time.delayedCall(Math.min(3000, maxLifetime), destroyProj);
   }
 
   public upgrade(): void {
@@ -76,6 +86,11 @@ export class PiercingWeapon implements IWeapon {
     this.damage *= 1.15;
     this.attackSpeed *= 1.1;
     this.pierceCount += 1;
+  }
+
+  // Mirrors upgrade(): keep in sync if the deltas above change.
+  public getUpgradePreview(): string {
+    return 'Dmg +15% · Speed +10% · Pierce +1';
   }
 
   public upgradeDamage(multiplier: number): void { this.damage *= multiplier; }

@@ -1,4 +1,5 @@
 import { PlayerStats, KillstreakPerkId } from '../types/GameTypes';
+import { MissionProgress } from '../types/MissionTypes';
 
 export class GameUI {
     private healthBar: Phaser.GameObjects.Graphics;
@@ -10,6 +11,9 @@ export class GameUI {
     private skillCooldownArc: Phaser.GameObjects.Graphics | null = null;
     private skillCooldownLabel: Phaser.GameObjects.Text | null = null;
     private killstreakText: Phaser.GameObjects.Text | null = null;
+    private objectiveTitle: Phaser.GameObjects.Text | null = null;
+    private objectiveDetail: Phaser.GameObjects.Text | null = null;
+    private objectiveBar: Phaser.GameObjects.Graphics | null = null;
 
     constructor(scene: Phaser.Scene) {
         this.scene = scene;
@@ -73,6 +77,16 @@ export class GameUI {
         this.killstreakText = this.scene.add.text(padding, padding + 140, '', {
             fontSize: '16px', color: '#ffffff', stroke: '#000000', strokeThickness: 4
         }).setScrollFactor(0).setVisible(false);
+
+        // Objective tracker (top-left, below killstreak)
+        this.objectiveTitle = this.scene.add.text(padding, padding + 170, '', {
+            fontSize: '16px', color: '#00ffff', stroke: '#000000', strokeThickness: 4
+        }).setScrollFactor(0).setVisible(false);
+        this.objectiveDetail = this.scene.add.text(padding, padding + 190, '', {
+            fontSize: '13px', color: '#ffffff', stroke: '#000000', strokeThickness: 3
+        }).setScrollFactor(0).setVisible(false);
+        this.objectiveBar = this.scene.add.graphics();
+        this.objectiveBar.setScrollFactor(0).setVisible(false);
     }
 
     private updateTimer(): void {
@@ -126,6 +140,32 @@ export class GameUI {
         this.timerText.setPosition(padding, padding + 40); // Ensure position stays correct
     }
 
+    public updateObjective(progress: MissionProgress, title: string, detail: string): void {
+        if (!this.objectiveTitle || !this.objectiveDetail || !this.objectiveBar) return;
+        const padding = 16;
+        const barY = padding + 210;
+        const barW = 200;
+        const barH = 12;
+
+        this.objectiveTitle.setPosition(padding, padding + 170);
+        this.objectiveTitle.setText(title);
+        this.objectiveTitle.setVisible(true);
+
+        this.objectiveDetail.setPosition(padding, padding + 190);
+        this.objectiveDetail.setText(detail);
+        this.objectiveDetail.setVisible(true);
+
+        const frac = progress.goal > 0 ? Phaser.Math.Clamp(progress.current / progress.goal, 0, 1) : 0;
+        this.objectiveBar.clear();
+        this.objectiveBar.fillStyle(0x000000, 1);
+        this.objectiveBar.fillRect(padding, barY, barW, barH);
+        // Flash red when a soft-fail condition is transiently invalidated.
+        const fillColor = progress.failed ? 0xff4444 : 0x00ffff;
+        this.objectiveBar.fillStyle(fillColor, 1);
+        this.objectiveBar.fillRect(padding, barY, frac * barW, barH);
+        this.objectiveBar.setVisible(true);
+    }
+
     public destroy(): void {
         this.healthBar.destroy();
         this.experienceBar.destroy();
@@ -134,6 +174,9 @@ export class GameUI {
         this.skillCooldownArc?.destroy();
         this.skillCooldownLabel?.destroy();
         this.killstreakText?.destroy();
+        this.objectiveTitle?.destroy();
+        this.objectiveDetail?.destroy();
+        this.objectiveBar?.destroy();
     }
 
     // Getter for gameTime to make it accessible from outside

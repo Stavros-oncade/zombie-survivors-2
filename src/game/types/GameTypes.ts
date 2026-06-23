@@ -58,7 +58,8 @@ export enum EnemyType {
     TANK = 'tank',
     RANGED = 'ranged',
     CARRIER = 'carrier',
-    TOXIC = 'toxic'
+    TOXIC = 'toxic',
+    SHRIEKER = 'shrieker'
 }
 
 export enum PickupType {
@@ -66,8 +67,9 @@ export enum PickupType {
     SPEED = 'speed',
     DAMAGE = 'damage',
     EXPERIENCE = 'experience',
-    BOMB = 'bomb'
-} 
+    BOMB = 'bomb',
+    AIRSTRIKE = 'airstrike'
+}
 
 export enum RelicRarity {
     COMMON = 'common',
@@ -128,5 +130,7 @@ export enum UpgradeId {
     HEALTH_REGEN = 'health_regen',
     PIERCING_SHOT = 'piercing_shot',
     EXPLOSIVE_BURST = 'explosive_burst',
-    PROJECTILE_SPEED = 'projectile_speed'
+    ORBITAL_SHIELD = 'orbital_shield',
+    PROJECTILE_SPEED = 'projectile_speed',
+    SKILL_MASTERY = 'skill_mastery'
 }

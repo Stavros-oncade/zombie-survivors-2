@@ -36,7 +36,7 @@ export class KillstreakSystem {
     const m = this.multiplier;
     if (this.perk === KillstreakPerkId.DAMAGE) ws.setTempDamageMultiplier(1 + 0.15 * (m - 1));
     if (this.perk === KillstreakPerkId.SPEED) ws.upgradeWeaponSpeed(1 + 0.10 * (m - 1));
-    // xp perk handled in Game enemyKilled XP calc by reading current multiplier
+    // xp perk handled in Game's enemyKilled XP calc, which calls getXPMult()
   }
 
   public getXPMult(): number {

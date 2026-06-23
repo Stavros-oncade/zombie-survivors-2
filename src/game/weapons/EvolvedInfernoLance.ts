@@ -48,8 +48,16 @@ export class EvolvedInfernoLance implements IWeapon {
     proj.setDataEnabled();
     proj.data?.set('__pierced', 0);
 
+    // Track the per-enemy overlaps so they are removed when the projectile dies;
+    // otherwise every shot leaks overlaps that keep firing on destroyed objects.
+    const overlaps: Phaser.Physics.Arcade.Collider[] = [];
+    const destroyProj = () => {
+      overlaps.forEach(o => o.destroy());
+      overlaps.length = 0;
+      if (proj && proj.active) proj.destroy();
+    };
     enemies.forEach(enemy => {
-      scene.physics.add.overlap(proj, enemy, () => {
+      const overlap = scene.physics.add.overlap(proj, enemy, () => {
         if (!enemy.active || !proj.active) return;
         const pierced = (proj.data?.get('__pierced') as number) ?? 0;
         enemy.takeDamage(this.getDamage());
@@ -57,15 +65,16 @@ export class EvolvedInfernoLance implements IWeapon {
         // Create a small explosion at enemy position
         createMiniExplosion(scene, enemy.x, enemy.y);
         if (((proj.data?.get('__pierced') as number) ?? 0) >= this.pierceCount) {
-          proj.destroy();
+          destroyProj();
         }
       });
+      overlaps.push(overlap);
     });
 
     const maxDistance = ExplosionConfig.RADIUS * 3;
     const speed = this.projectileSpeed;
     const maxLifetime = Math.ceil((maxDistance / speed) * 1000);
-    scene.time.delayedCall(Math.min(3500, maxLifetime), () => proj?.destroy());
+    scene.time.delayedCall(Math.min(3500, maxLifetime), destroyProj);
   }
 
   public upgrade(): void {
@@ -90,9 +99,12 @@ function createMiniExplosion(scene: Scene, x: number, y: number) {
   // Use ExplosionConfig for visual consistency
   const r = Math.max(60, ExplosionConfig.RADIUS * 0.4);
   const g = scene.add.graphics();
+  // Draw centered at local (0, 0) and move the object to (x, y) so the scale
+  // tween grows the burst in place rather than scaling away from world origin.
+  g.setPosition(x, y);
   g.fillStyle(0xff5500, 0.6);
-  g.fillCircle(x, y, r);
+  g.fillCircle(0, 0, r);
   g.lineStyle(2, 0xffffff, 0.8);
-  g.strokeCircle(x, y, r);
+  g.strokeCircle(0, 0, r);
   scene.tweens.add({ targets: g, alpha: 0, scale: 1.3, duration: 250, onComplete: () => g.destroy() });
 }

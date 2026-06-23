@@ -1,5 +1,6 @@
 import { Scene } from 'phaser';
 import { BLUEPRINTS, BlueprintSystem } from '../systems/BlueprintSystem';
+import { CityReclamationSystem } from '../systems/CityReclamationSystem';
 import { SceneKey } from '../config/SceneKeys';
 
 export class Blueprints extends Scene {
@@ -16,8 +17,14 @@ export class Blueprints extends Scene {
       fontFamily: 'Arial', fontSize: '20px', color: '#00ff88', stroke: '#000000', strokeThickness: 3
     }).setOrigin(0.5);
 
+    // Special (zone-revealed) blueprints only appear once their zone clears (§9.3).
+    // `bp.special` is a forward-ref field owned by the weapon-unlocks doc; until it
+    // ships no blueprint is special and this filter is a no-op.
+    const revealed = CityReclamationSystem.getRevealedBlueprintIds();
     let y = 160;
-    BLUEPRINTS.forEach(bp => {
+    BLUEPRINTS
+      .filter(bp => !(bp as { special?: boolean }).special || revealed.includes(bp.id))
+      .forEach(bp => {
       const renderText = () => {
         const unlocked = BlueprintSystem.isUnlocked(bp.id);
         return `${bp.name} (${bp.cost}) — ${bp.description} ${unlocked ? '[UNLOCKED]' : ''}`;
@@ -50,6 +57,6 @@ export class Blueprints extends Scene {
     this.add.text(w/2, y + 40, 'Back', {
       fontFamily: 'Arial Black', fontSize: '28px', color: '#ffffff', stroke: '#000000', strokeThickness: 6
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
-    .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
+    .on('pointerdown', () => this.scene.start(SceneKey.CampUpgrades));
   }
 }

@@ -7,6 +7,7 @@ import { BossEnemy } from '../entities/BossEnemy';
 import { RangedEnemy } from '../entities/RangedEnemy';
 import { CarrierEnemy } from '../entities/CarrierEnemy';
 import { ToxicTankEnemy } from '../entities/ToxicTankEnemy';
+import { ShriekerEnemy } from '../entities/ShriekerEnemy';
 import { SpawningConfig } from './SpawningConfig';
 import { Game } from '../scenes/Game';
 
@@ -39,6 +40,11 @@ interface WaveStateDisplayConfig {
     }
 
 export class EnemySpawnSystem {
+    // Shrieker spawn gating: only mix in once difficulty has ramped, and never let
+    // more than a couple exist at once (their aura compounds across a pack quickly).
+    private static readonly SHRIEKER_MIN_DIFFICULTY = 2;
+    private static readonly SHRIEKER_MAX_ALIVE = 2;
+
     private scene: Phaser.Scene;
     private enemies: Phaser.Physics.Arcade.Group;
     private spawnTimer!: Phaser.Time.TimerEvent;
@@ -49,10 +55,33 @@ export class EnemySpawnSystem {
     // timers are created and managed internally; references retained for lifecycle, may be unused in code paths
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private eliteTimer!: Phaser.Time.TimerEvent;
-    private eliteAlive: boolean = false;
+    // Number of elites currently alive. Replaces the old single `eliteAlive` boolean
+    // so a simultaneously-spawned KILL_ELITES group (spawnEliteGroup) doesn't let the
+    // periodic timer slip extra elites in while the group is still alive: the timer
+    // only fires when this is 0, and each `elite_died` decrements it (down to 0).
+    private eliteAliveCount: number = 0;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     private bossTimer!: Phaser.Time.TimerEvent;
     private bossAlive: boolean = false;
+
+    // Expedition / Job Board run-modifier multipliers (default 1 = unchanged).
+    private densityMult: number = 1;
+    private enemyDamageMult: number = 1;
+    private eliteIntervalMult: number = 1;
+
+    // ── Extraction phase (uncapped directional spawning) ──
+    // When active, spawning bypasses getScaledConfig ceilings and a fast fixed
+    // loop replaces the normal spawn timer, biased to come mostly from AWAY from
+    // the extraction zone. The state machine is frozen while active.
+    private extractionActive: boolean = false;
+    private extractionTarget?: { x: number; y: number };
+    private extractionSpawnTimer?: Phaser.Time.TimerEvent;
+    private savedSpawnState?: SpawnState;
+    // Rear-bias tuning (see spec §3).
+    private static readonly EXTRACT_BASE_FLOOR = 0.08;
+    private static readonly EXTRACT_BIAS_K = 2;
+    private static readonly EXTRACT_SPAWN_DELAY = 250;
+    private static readonly EXTRACT_BATCH = 8;
 
     private readonly stateConfigs: Record<SpawnState, SpawnStateConfig>;
     private readonly stateNames: SpawnState[];
@@ -190,19 +219,13 @@ export class EnemySpawnSystem {
         });
 
         // Spawn an elite periodically
-        this.eliteTimer = this.scene.time.addEvent({
-            delay: 90000,
-            loop: true,
-            callback: () => {
-                if (!this.eliteAlive) {
-                    this.spawnElite();
-                }
-            }
-        });
+        this.setupEliteTimer();
 
-        // Track elite death
+        // Track elite death. Each elite (single or part of a group) emits its own
+        // `elite_died`, so decrement per death and clamp at 0 — the periodic timer
+        // re-opens only once every elite is gone.
         this.scene.events.on('elite_died', () => {
-            this.eliteAlive = false;
+            this.eliteAliveCount = Math.max(0, this.eliteAliveCount - 1);
         });
         // Spawn boss once after 5 minutes
         this.bossTimer = this.scene.time.addEvent({ delay: 300000, loop: false, callback: () => {
@@ -232,7 +255,7 @@ export class EnemySpawnSystem {
         return {
             ...base,
             spawnDelay: Math.max(250, Math.floor((base.spawnDelay * delayFactor) / rate)),
-            spawnCount: base.spawnCount + extraCount,
+            spawnCount: Math.max(1, Math.round((base.spawnCount + extraCount) * this.densityMult)),
             enemyChances: {
                 fast: fastBias,
                 tank: tankBias,
@@ -383,9 +406,17 @@ export class EnemySpawnSystem {
             enemy = new CarrierEnemy(this.scene, x, y);
         } else if (type === EnemyType.TOXIC) {
             enemy = new ToxicTankEnemy(this.scene, x, y);
+        } else if (type === EnemyType.SHRIEKER) {
+            enemy = new ShriekerEnemy(this.scene, x, y);
         } else {
             enemy = new Enemy(this.scene, x, y, type);
         }
+        // Rare "double speed" variant — orthogonal to base type, rides on any of
+        // them. Apply at spawn, before any slow, so applySlow's snapshot is correct.
+        if (Math.random() < GameConstants.ENEMIES.DOUBLE_SPEED_CHANCE) {
+            enemy.makeDoubleSpeed();
+        }
+        if (this.enemyDamageMult !== 1) enemy.scaleDamage(this.enemyDamageMult);
         this.scene.add.existing(enemy);
         this.enemies.add(enemy);
         // console.log(
@@ -396,16 +427,46 @@ export class EnemySpawnSystem {
     private spawnElite(): void {
         const pos = this.getRandomSpawnPositionOnSide(Phaser.Math.Between(0, 3));
         const elite = new EliteEnemy(this.scene, pos.x, pos.y);
+        if (this.enemyDamageMult !== 1) elite.scaleDamage(this.enemyDamageMult);
         this.scene.add.existing(elite);
         this.enemies.add(elite);
-        this.eliteAlive = true;
+        this.eliteAliveCount++;
         // Announce elite spawn (Game can do camera zoom + micro pause)
         this.scene.events.emit('elite_spawned', elite);
+    }
+
+    /**
+     * Spawn `count` elites SIMULTANEOUSLY for a KILL_ELITES mission. Unlike the
+     * periodic single-elite path, every elite appears at once, CLUSTERED ON ONE
+     * SHARED SIDE (one side is picked once, positions jittered around it) so a
+     * single centroid camera pan can frame the whole group without the centroid
+     * landing on empty space. Emits ONE combined `elites_group_spawned` event with
+     * the array of elites — it does NOT emit per-elite `elite_spawned`, which would
+     * fire competing camera intros (one event → one intro → one set of tweens).
+     */
+    public spawnEliteGroup(count: number): void {
+        const n = Math.max(1, Math.floor(count));
+        const side = Phaser.Math.Between(0, 3);
+        const elites: EliteEnemy[] = [];
+        for (let i = 0; i < n; i++) {
+            const pos = this.getRandomSpawnPositionOnSide(side);
+            const offsetX = Phaser.Math.Between(-60, 60);
+            const offsetY = Phaser.Math.Between(-60, 60);
+            const elite = new EliteEnemy(this.scene, pos.x + offsetX, pos.y + offsetY);
+            if (this.enemyDamageMult !== 1) elite.scaleDamage(this.enemyDamageMult);
+            this.scene.add.existing(elite);
+            this.enemies.add(elite);
+            this.eliteAliveCount++;
+            elites.push(elite);
+        }
+        // One combined announcement → Game runs a single group camera intro.
+        this.scene.events.emit('elites_group_spawned', elites);
     }
 
     private spawnBoss(): void {
         const pos = this.getRandomSpawnPositionOnSide(Phaser.Math.Between(0, 3));
         const boss = new BossEnemy(this.scene, pos.x, pos.y);
+        if (this.enemyDamageMult !== 1) boss.scaleDamage(this.enemyDamageMult);
         this.scene.add.existing(boss);
         this.enemies.add(boss);
         this.bossAlive = true;
@@ -413,8 +474,43 @@ export class EnemySpawnSystem {
     }
 
     // Public triggers for external control
-    public triggerElite(): void { if (!this.eliteAlive) this.spawnElite(); }
+    public triggerElite(): void { if (this.eliteAliveCount === 0) this.spawnElite(); }
     public triggerBoss(): void { if (!this.bossAlive) this.spawnBoss(); }
+
+    private setupEliteTimer(): void {
+        this.eliteTimer?.destroy();
+        const delay = Math.max(5000, Math.round(90000 * this.eliteIntervalMult));
+        this.eliteTimer = this.scene.time.addEvent({
+            delay,
+            loop: true,
+            callback: () => {
+                if (this.eliteAliveCount === 0) this.spawnElite();
+            }
+        });
+    }
+
+    // ── Expedition / Job Board run-modifier setters (§8) ──
+    public setEnemyDensityMult(mult: number): void {
+        this.densityMult = Math.max(0.25, mult);
+        this.applyStateConfig(); // re-derive spawnCount immediately
+    }
+    public setEnemyDamageMult(mult: number): void {
+        this.enemyDamageMult = Math.max(0.25, mult);
+    }
+    public setEliteIntervalMult(mult: number): void {
+        this.eliteIntervalMult = Math.max(0.1, mult);
+        this.setupEliteTimer();
+    }
+
+    /** Count currently-alive Shriekers in the group (enforces the spawn cap). */
+    private countAliveShriekers(): number {
+        let count = 0;
+        const children = this.enemies.getChildren() as Enemy[];
+        for (const e of children) {
+            if (e.active && e instanceof ShriekerEnemy) count++;
+        }
+        return count;
+    }
 
     private getRandomEnemyType(cfg: SpawnStateConfig): EnemyType {
         // Treat enemyChances as weights (not normalized probabilities).
@@ -423,16 +519,26 @@ export class EnemySpawnSystem {
         const wRanged = Math.max(0, cfg.enemyChances.ranged || 0);
         const wCarrier = Math.max(0, cfg.enemyChances.carrier || 0);
         const wToxic = Math.max(0, cfg.enemyChances.toxic || 0);
+        // Shrieker (pack-rally aura). Small weight so 1 mixes into NORMAL/PEAK waves.
+        // Gated on difficulty >= 2, capped at MAX_ALIVE concurrent, and excluded from
+        // the focused "pack" states so it stays an opportunistic horde sweetener.
+        const isPackWave = !!(this.spawnState && this.spawnState.indexOf('pack') !== -1);
+        const shriekerEligible =
+            this.difficultyLevel >= EnemySpawnSystem.SHRIEKER_MIN_DIFFICULTY &&
+            !isPackWave &&
+            this.countAliveShriekers() < EnemySpawnSystem.SHRIEKER_MAX_ALIVE;
+        const wShrieker = shriekerEligible ? 0.06 : 0;
         // Include a baseline BASIC weight for generic states only; exclude for "pack" waves
-        const includeBaselineBasic = !(this.spawnState && this.spawnState.indexOf('pack') !== -1);
+        const includeBaselineBasic = !isPackWave;
         const wBasic = includeBaselineBasic ? 1 : 0;
-        const total = wTank + wFast + wRanged + wCarrier + wToxic + wBasic;
+        const total = wTank + wFast + wRanged + wCarrier + wToxic + wShrieker + wBasic;
         const roll = Math.random() * (total > 0 ? total : 1);
         if (roll < wTank) return EnemyType.TANK;
         if (roll < wTank + wFast) return EnemyType.FAST;
         if (roll < wTank + wFast + wRanged) return EnemyType.RANGED;
         if (roll < wTank + wFast + wRanged + wCarrier) return EnemyType.CARRIER;
         if (roll < wTank + wFast + wRanged + wCarrier + wToxic) return EnemyType.TOXIC;
+        if (roll < wTank + wFast + wRanged + wCarrier + wToxic + wShrieker) return EnemyType.SHRIEKER;
         return EnemyType.BASIC;
     }
 
@@ -455,10 +561,129 @@ export class EnemySpawnSystem {
         }
     }
 
+    // ── Extraction phase: uncapped, rear-biased directional spawning (spec §3/§4) ──
+
+    /** Set (or clear) the world point spawns should be biased AWAY from. */
+    public setExtractionTarget(p?: { x: number; y: number }): void {
+        this.extractionTarget = p;
+    }
+
+    /**
+     * Begin uncapped extraction spawning. Freezes the normal state machine
+     * (so switchState can't reset the override), saves the current state, and
+     * replaces the spawn timer with a fast fixed loop that bypasses the
+     * getScaledConfig difficulty ceilings and spawns a fixed rear-biased batch.
+     */
+    public beginExtractionSpawning(target: { x: number; y: number }): void {
+        if (this.extractionActive) return;
+        this.extractionActive = true;
+        this.extractionTarget = target;
+        this.savedSpawnState = this.spawnState;
+
+        // Freeze the normal cadence: kill the periodic spawn + the state machine
+        // timer so neither competes with / resets the extraction override.
+        this.spawnTimer?.destroy();
+        this.stateTimer?.destroy();
+
+        this.extractionSpawnTimer = this.scene.time.addEvent({
+            delay: EnemySpawnSystem.EXTRACT_SPAWN_DELAY,
+            loop: true,
+            callback: this.spawnExtractionBatch,
+            callbackScope: this,
+        });
+    }
+
+    /** Restore the saved spawn state and normal timers when the phase ends. */
+    public endExtractionSpawning(): void {
+        if (!this.extractionActive) return;
+        this.extractionActive = false;
+        this.extractionTarget = undefined;
+        this.extractionSpawnTimer?.destroy();
+        this.extractionSpawnTimer = undefined;
+        if (this.savedSpawnState) {
+            this.spawnState = this.savedSpawnState;
+            this.savedSpawnState = undefined;
+        }
+        // Re-arm the normal spawn + state timers from the (unfrozen) state.
+        this.applyStateConfig();
+    }
+
+    /**
+     * Spawn a fixed batch each tick, bypassing getScaledConfig ceilings. Each
+     * enemy is placed via getBiasedSpawnPosition so the horde comes mostly from
+     * away from the exit. Uses the current state's enemy mix for variety.
+     */
+    private spawnExtractionBatch(): void {
+        const cfg = this.stateConfigs[this.spawnState];
+        for (let i = 0; i < EnemySpawnSystem.EXTRACT_BATCH; i++) {
+            const { x, y } = this.getBiasedSpawnPosition();
+            this.createEnemy(x, y, cfg);
+        }
+    }
+
+    /**
+     * Pick a just-off-screen spawn point biased AWAY from the extraction exit via
+     * rejection sampling. weight(δ) = baseFloor + (1-baseFloor)*((1-cos δ)/2)^k
+     * where δ is the angular distance from the player→exit direction (0 = toward
+     * exit, π = away). Up to ~8 tries, then accept the last roll.
+     */
+    public getBiasedSpawnPosition(): { x: number; y: number } {
+        let centerX = this.scene.cameras.main.worldView.centerX;
+        let centerY = this.scene.cameras.main.worldView.centerY;
+        if (this.scene instanceof Game) {
+            const p = this.scene.getPlayer();
+            centerX = p.x;
+            centerY = p.y;
+        }
+
+        // No target → fall back to a plain off-screen edge spawn.
+        if (!this.extractionTarget) {
+            return this.getRandomSpawnPosition();
+        }
+
+        const exitAngle = Math.atan2(
+            this.extractionTarget.y - centerY,
+            this.extractionTarget.x - centerX
+        );
+
+        let theta = Math.random() * Math.PI * 2;
+        for (let attempt = 0; attempt < 8; attempt++) {
+            theta = Math.random() * Math.PI * 2;
+            const delta = Math.abs(Phaser.Math.Angle.Wrap(theta - exitAngle)); // [0, π]
+            const away = (1 - Math.cos(delta)) / 2; // 0 toward exit, 1 away
+            const weight =
+                EnemySpawnSystem.EXTRACT_BASE_FLOOR +
+                (1 - EnemySpawnSystem.EXTRACT_BASE_FLOOR) *
+                    Math.pow(away, EnemySpawnSystem.EXTRACT_BIAS_K);
+            if (Math.random() < weight) break;
+        }
+        return this.projectToViewportEdge(centerX, centerY, theta);
+    }
+
+    /**
+     * Ray-cast from (cx, cy) along angle theta to the nearest camera worldView
+     * edge, so the spawn lands just off-screen in the chosen direction.
+     */
+    public projectToViewportEdge(cx: number, cy: number, theta: number): { x: number; y: number } {
+        const { left, right, top, bottom } = this.scene.cameras.main.worldView;
+        const dx = Math.cos(theta);
+        const dy = Math.sin(theta);
+
+        let t = Infinity;
+        if (dx > 1e-6) t = Math.min(t, (right - cx) / dx);
+        else if (dx < -1e-6) t = Math.min(t, (left - cx) / dx);
+        if (dy > 1e-6) t = Math.min(t, (bottom - cy) / dy);
+        else if (dy < -1e-6) t = Math.min(t, (top - cy) / dy);
+        if (!isFinite(t) || t < 0) t = 0;
+
+        return { x: cx + dx * t, y: cy + dy * t };
+    }
+
     public destroy(): void {
         this.spawnTimer?.destroy();
         this.stateTimer?.destroy();
         this.difficultyTimer?.destroy();
+        this.extractionSpawnTimer?.destroy();
     }
 
     // New method to get the formatted wave state text

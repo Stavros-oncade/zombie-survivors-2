@@ -9,6 +9,11 @@ import { LevelUpSelection } from './scenes/LevelUpSelection';
 import { ScreenManager } from './utils/ScreenManager';
 import { Loadout } from './scenes/Loadout';
 import { Blueprints } from './scenes/Blueprints';
+import { Camp } from './scenes/Camp';
+import { CampUpgrades } from './scenes/CampUpgrades';
+import { JobBoard } from './scenes/JobBoard';
+import { CityReclamation } from './scenes/CityReclamation';
+import { RouteMap } from './scenes/RouteMap';
 import { SpawnTuner } from './scenes/SpawnTuner';
 
 //  Find out more information about the Game Config at:
@@ -29,7 +34,12 @@ const config: Phaser.Types.Core.GameConfig = {
         GameOver,
         PauseMenu,
         LevelUpSelection,
-        Blueprints
+        Blueprints,
+        Camp,
+        CampUpgrades,
+        JobBoard,
+        CityReclamation,
+        RouteMap
     ],
     physics: {
         default: 'arcade',

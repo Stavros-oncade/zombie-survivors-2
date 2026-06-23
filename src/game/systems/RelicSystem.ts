@@ -7,6 +7,8 @@ export type Relic = {
   description: string;
   rarity: RelicRarity;
   weight: number; // for weighted selection
+  minPlayTimeSec?: number; // gate by run time (e.g. legendaries only late)
+  chestOnly?: boolean;     // exclude from the level-up pool (chests only)
   apply: (game: Game) => void;
 };
 
@@ -33,6 +35,10 @@ export class RelicSystem {
 
   // Expose for UI / selection
   public getAcquiredIds(): Set<string> { return new Set(this.acquired); }
+
+  /** Re-apply a relic by id at a Long Recon node start (§5.3). acquireRelic is
+   *  idempotent (guards on the acquired set) and re-runs the relic's apply(). */
+  public reapply(id: string): void { this.acquireRelic(id); }
 }
 
 // Assets needed:
@@ -42,6 +48,8 @@ export class RelicSystem {
 // - relic_greed.png (gold coin or laurel)
 // - relic_celerity.png (wing or boot)
 // - relic_arsenal.png (crossed blades)
+// - relic_singularity_core.png (purple/void collapsing star)
+// - relic_chrono_engine.png (cyan/electric clockwork)
 // Place under public/assets/ and load in Preloader if showing icons in UI.
 
 export const RELICS: Relic[] = [
@@ -113,6 +121,35 @@ export const RELICS: Relic[] = [
     weight: 20,
     apply: (game: Game) => {
       game.getWeaponSystem().upgradeWeaponSpeed(1.15);
+    }
+  },
+  {
+    id: 'singularity_core',
+    name: 'Singularity Core',
+    description: 'Your explosive bursts collapse inward. Unlocks the Gravity Well evolution and pulls enemies toward blast centers.',
+    rarity: RelicRarity.LEGENDARY,
+    weight: 3,
+    minPlayTimeSec: 300, // 5 min, chest-only
+    chestOnly: true,
+    apply: (game: Game) => {
+      // Primary effect is the evolution UNLOCK: the GravityWell recipe requires
+      // hasRelic('singularity_core'). Re-check immediately so a qualifying
+      // player evolves the moment they pick this up.
+      game.getWeaponSystem().checkEvolutionPublic();
+    }
+  },
+  {
+    id: 'chrono_engine',
+    name: 'Chrono Engine',
+    description: 'Time dilates around you. +60% attack speed for ALL weapons.',
+    rarity: RelicRarity.LEGENDARY,
+    weight: 3,
+    minPlayTimeSec: 300,
+    chestOnly: true,
+    apply: (game: Game) => {
+      // Big global attack-speed step that reshapes pacing (vs Arsenal +10% /
+      // Overclock +15%). Reuses the existing hook.
+      game.getWeaponSystem().upgradeWeaponSpeed(1.6);
     }
   }
 ];

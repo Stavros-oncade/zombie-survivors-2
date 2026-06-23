@@ -133,6 +133,10 @@ export class PauseMenu extends Scene {
     }
 
     private goToMainMenu() {
+        // The Game scene is PAUSED while this menu is up. Stopping a paused scene
+        // leaves Arcade physics unable to re-boot (physics.world === null) on the
+        // next run's create(), so resume it before stopping.
+        this.scene.resume(SceneKey.Game);
         this.scene.stop(SceneKey.Game);
         this.scene.start(SceneKey.MainMenu);
     }

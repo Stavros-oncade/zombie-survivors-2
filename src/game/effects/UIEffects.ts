@@ -152,6 +152,23 @@ export class UIEffects {
         this.createLevelUpParticles();
     }
 
+    /** Immediately remove the celebratory "LEVEL UP!" banner and its tweens.
+     *  Called when the level-up selection menu is about to open so the fading
+     *  banner doesn't bleed through the menu's overlay. */
+    public clearLevelUpText(): void {
+        if (this.scene?.tweens && this.levelUpText) {
+            this.scene.tweens.killTweensOf(this.levelUpText);
+        }
+        if (this.currentTween) {
+            this.currentTween.stop();
+            this.currentTween = null;
+        }
+        if (this.levelUpText) {
+            this.levelUpText.destroy();
+            this.levelUpText = null;
+        }
+    }
+
     private createLevelUpParticles(): void {
         // Check if scene is valid
         if (!this.isSceneValid()) {

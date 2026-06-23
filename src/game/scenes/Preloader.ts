@@ -127,17 +127,61 @@ export class Preloader extends Scene
             ['relic_vitality', 0xff77aa],
             ['relic_sharpshooter', 0xffaa33],
             ['relic_overclock', 0xaa66ff],
+            ['relic_singularity_core', 0x9b59ff],
+            ['relic_chrono_engine', 0x33ddff],
             ['upgrade_piercing', 0x66ccff],
             ['upgrade_explosive', 0xff8844],
+            ['upgrade_orbital', 0x66ffcc],
             ['upgrade_projectile', 0x66ccff],
             ['upgrade_weapon_damage', 0xff4444],
             ['upgrade_weapon_speed', 0xaa66ff],
             ['upgrade_speed', 0x00ffaa],
-            ['upgrade_health', 0xff77aa]
+            ['upgrade_health', 0xff77aa],
+            ['upgrade_tesla', 0x66ccff],
+            ['upgrade_drone', 0xffcc33],
+            ['upgrade_frostmine', 0x99eeff],
+            ['upgrade_ricochet', 0xff66aa],
+            ['upgrade_beam', 0xff5577],
+            ['upgrade_voidorb', 0x9b59ff]
         ].forEach(([k, c]) => ensureIcon(k as string, c as number));
 
         // Blueprint drop placeholder
         ensureIcon('blueprint_drop', 0x00bcd4);
+
+        // Sentry Drone body: dark gray/black rounded body with two neon eyes.
+        // Procedurally generated so the companion doesn't reuse the gold projectile.
+        if (!this.textures.exists('sentry_drone')) {
+            const size = 32;
+            const d = this.add.graphics();
+            // Soft outer glow / hull rim
+            d.fillStyle(0x2a2a30, 1);
+            d.fillRoundedRect(2, 4, size - 4, size - 8, 8);
+            // Dark body
+            d.fillStyle(0x16161a, 1);
+            d.fillRoundedRect(4, 6, size - 8, size - 12, 6);
+            // Neon eyes: outer translucent glow + bright core
+            const eyeColor = 0x00ffff;
+            const eyeY = size / 2 - 1;
+            const leftX = size / 2 - 5;
+            const rightX = size / 2 + 5;
+            d.fillStyle(eyeColor, 0.35);
+            d.fillCircle(leftX, eyeY, 4.5);
+            d.fillCircle(rightX, eyeY, 4.5);
+            d.fillStyle(eyeColor, 1);
+            d.fillCircle(leftX, eyeY, 2.2);
+            d.fillCircle(rightX, eyeY, 2.2);
+            d.generateTexture('sentry_drone', size, size);
+            d.destroy();
+        }
+
+        // Soft white dot used by all UIEffects particle emitters
+        if (!this.textures.exists('particle')) {
+            const p = this.add.graphics();
+            p.fillStyle(0xffffff, 1);
+            p.fillCircle(4, 4, 4);
+            p.generateTexture('particle', 8, 8);
+            p.destroy();
+        }
 
         this.scene.start(SceneKey.MainMenu);
     }

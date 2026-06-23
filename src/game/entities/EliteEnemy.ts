@@ -1,6 +1,7 @@
 import { Enemy } from './Enemy';
 import { Player } from './Player';
 import { EnemyType, EliteState, EliteAffix } from '../types/GameTypes';
+import { KillClass } from '../types/MissionTypes';
 import { GameConstants } from '../config/GameConstants';
 import { generateEliteName } from '../config/Naming';
 import { Game } from '../scenes/Game';
@@ -23,6 +24,10 @@ export class EliteEnemy extends Enemy {
   private nameText?: Phaser.GameObjects.Text | null = null;
 
   public getNameText(): Phaser.GameObjects.Text | null { return this.nameText ?? null; }
+
+  public override getKillClass(): KillClass {
+    return { type: this.enemyType, isElite: true, isBoss: false };
+  }
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, EnemyType.BASIC);

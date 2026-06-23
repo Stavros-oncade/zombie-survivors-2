@@ -1,10 +1,11 @@
 import { GameObjects, Scene } from 'phaser';
 
 import { EventBus } from '../EventBus';
-import { initializeOncade, getStoreCatalog, openTipUrl, getAllConfig, getConfig } from '../../oncade/OncadeIntegration';
+import { initializeOncade, getAllConfig, getConfig } from '../../oncade/OncadeIntegration';
 import { ScreenManager } from '../utils/ScreenManager';
 import { GameConfig } from '../config/GameConfig';
 import { SceneKey } from '../config/SceneKeys';
+import { ReconSystem } from '../systems/ReconSystem';
 
 export class MainMenu extends Scene
 {
@@ -123,12 +124,12 @@ export class MainMenu extends Scene
         
         // Calculate button positions from bottom up
         const bottomPadding = 40; // Padding from bottom of screen
-        const tipButtonY = this.cameras.main.height - bottomPadding;
-        const storeButtonY = tipButtonY - buttonYOffset;
-        const playButtonY = storeButtonY - buttonYOffset;
-        
-        // Create play button
-        this.playButton = this.add.text(this.cameras.main.width / 2, playButtonY, 'Play', {
+        const playButtonY = this.cameras.main.height - bottomPadding;
+
+        // Enter Camp — the camp plaza is now the central hub (Jobs, Upgrades, City
+        // Map are all reachable from inside it). The menu is intentionally slim so
+        // players can always return here to start over after a total loss.
+        this.playButton = this.add.text(this.cameras.main.width / 2, playButtonY, 'Enter Camp', {
             fontFamily: 'Arial Black', fontSize: 32, color: '#ffffff',
             stroke: '#000000', strokeThickness: 6,
             align: 'center',
@@ -139,44 +140,25 @@ export class MainMenu extends Scene
         .setInteractive({ useHandCursor: true })
         .on('pointerover', () => this.playButton.setStyle({ color: '#ffff00' }))
         .on('pointerout', () => this.playButton.setStyle({ color: '#ffffff' }))
-        .on('pointerdown', () => this.scene.start(SceneKey.Loadout));
-        
-        // --- Add Oncade Buttons --- 
-        // Store Button (Now emits event to show React UI)
-        const storeButton = this.createButton('Store', async () => {
-            try {
-                const catalog = await getStoreCatalog();
-                if (catalog && catalog.length > 0) {
-                    EventBus.emit('show-store', catalog);
-                } else {
-                    // Optionally emit an event to show an empty store or error message
-                    EventBus.emit('show-store', []); // Show empty store
-                    // alert('Store catalog is empty or unavailable.'); 
-                }
-            } catch (error) {
-                console.error('Error fetching store catalog:', error);
-                // Optionally emit an event to show an error message in the UI
-                EventBus.emit('show-store', []); // Show empty store on error
-                // alert('Failed to load store catalog.');
-            }
-        });
-        storeButton.setPosition(this.cameras.main.width / 2, storeButtonY);
-        storeButton.setDepth(102);
+        .on('pointerdown', () => this.scene.start(SceneKey.Camp));
 
-        // Tip Button
-        const tipButton = this.createButton('Tip Developer', () => {
-            openTipUrl();
+        // Spawn Tuner (Debug) Button
+        const tunerButton = this.createButton('Spawn Tuner', () => {
+            this.scene.start(SceneKey.SpawnTuner);
         });
-        tipButton.setPosition(this.cameras.main.width / 2, tipButtonY);
-        tipButton.setDepth(102);
-        // --- End Oncade Buttons ---
+        tunerButton.setPosition(this.cameras.main.width / 2, playButtonY - buttonYOffset);
+        tunerButton.setDepth(102);
 
-        // Blueprints Button
-        const bpButton = this.createButton('Blueprints', () => {
-            this.scene.start(SceneKey.Blueprints);
-        });
-        bpButton.setPosition(this.cameras.main.width / 2, playButtonY - buttonYOffset);
-        bpButton.setDepth(102);
+        // Resume Recon — only when a Long Recon is mid-flight (resumable, §10). Boots
+        // straight into the RouteMap at the current node from the persisted run-state.
+        if (ReconSystem.getInstance().isActive()) {
+            const resumeButton = this.createButton('Resume Recon', () => {
+                this.scene.start(SceneKey.RouteMap);
+            });
+            resumeButton.setPosition(this.cameras.main.width / 2, playButtonY - buttonYOffset * 2);
+            resumeButton.setDepth(102);
+            resumeButton.setStyle({ color: '#c9aaff' });
+        }
 
         // Initialize zombies
         this.initializeZombies();

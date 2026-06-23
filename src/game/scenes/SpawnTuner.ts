@@ -127,12 +127,12 @@ export class SpawnTuner extends Scene {
     };
 
     const sy = 465;
-    makeStateBtn('Normal', SpawnState.NORMAL, w/2 - 260, sy);
-    makeStateBtn('Peak', SpawnState.PEAK, w/2 - 130, sy);
-    makeStateBtn('Cooldown', SpawnState.COOLDOWN, w/2, sy);
-    makeStateBtn('Ranged Pack', SpawnState.RANGED_PACK, w/2 + 130, sy);
-    makeStateBtn('Carrier Pack', SpawnState.CARRIER_PACK, w/2 + 130, sy);
-    makeStateBtn('Toxic Pack', SpawnState.TOXIC_PACK, w/2 + 260, sy);
+    makeStateBtn('Normal', SpawnState.NORMAL, w/2 - 325, sy);
+    makeStateBtn('Peak', SpawnState.PEAK, w/2 - 195, sy);
+    makeStateBtn('Cooldown', SpawnState.COOLDOWN, w/2 - 65, sy);
+    makeStateBtn('Ranged Pack', SpawnState.RANGED_PACK, w/2 + 65, sy);
+    makeStateBtn('Carrier Pack', SpawnState.CARRIER_PACK, w/2 + 195, sy);
+    makeStateBtn('Toxic Pack', SpawnState.TOXIC_PACK, w/2 + 325, sy);
 
     this.add.text(w/2, h - 100, 'Start Game', {
       fontFamily: 'Arial Black', fontSize: '32px', color: '#ffffff', stroke: '#000000', strokeThickness: 6
@@ -144,7 +144,7 @@ export class SpawnTuner extends Scene {
     // Back option
     this.add.text(40, h - 40, 'Back', { fontFamily: 'Arial', fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 })
       .setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => this.scene.start(SceneKey.Loadout));
+      .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
 
     // On shutdown/destroy, clear references so we don't hold onto destroyed objects
     this.events.once('shutdown', () => {

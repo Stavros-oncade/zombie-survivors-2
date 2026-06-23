@@ -1,5 +1,6 @@
 import { Enemy } from './Enemy';
 import { EnemyType } from '../types/GameTypes';
+import { KillClass } from '../types/MissionTypes';
 import { generateBossName } from '../config/Naming';
 import { SceneKey } from '../config/SceneKeys';
 
@@ -29,6 +30,10 @@ export class BossEnemy extends Enemy {
 
   public getNameText(): Phaser.GameObjects.Text | null {
     return this.nameText ?? null;
+  }
+
+  public override getKillClass(): KillClass {
+    return { type: this.enemyType, isElite: false, isBoss: true };
   }
 
   public update(player: Phaser.Physics.Arcade.Sprite) {

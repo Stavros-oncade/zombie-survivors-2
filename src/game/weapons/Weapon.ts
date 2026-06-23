@@ -2,6 +2,7 @@ import { Scene } from 'phaser';
 import { Enemy } from '../entities/Enemy';
 import { IWeapon } from './IWeapon';
 import { ExplosionConfig } from '../config/ExplosionConfig';
+import { GameConstants } from '../config/GameConstants';
 
 interface WeaponConfig {
     damage: number;
@@ -79,23 +80,31 @@ export class Weapon implements IWeapon {
         const velocityY = this.projectileSpeed * Math.sin(angle);
         (projectile.body as Phaser.Physics.Arcade.Body).setVelocity(velocityX, velocityY);
 
-        // Add collision with enemies
-        enemies.forEach(enemy => {
-            if (!(enemy instanceof Enemy)) return;
-            scene.physics.add.collider(projectile, enemy, () => {
-                enemy.takeDamage(this.getDamage());
-                projectile.destroy();
-            });
-        });
-
-        // Destroy projectile after traveling max range (3x bomb radius) or fallback timeout
-        const maxDistance = ExplosionConfig.RADIUS * 3;
-        const maxLifetime = Math.ceil((maxDistance / this.projectileSpeed) * 1000);
-        scene.time.delayedCall(Math.min(4000, maxLifetime), () => {
+        // Add collision with enemies. Track the colliders so they can be removed
+        // when the projectile dies — otherwise every shot leaks a per-enemy collider
+        // that keeps firing on destroyed projectiles/enemies.
+        const colliders: Phaser.Physics.Arcade.Collider[] = [];
+        const cleanup = () => {
+            colliders.forEach(c => c.destroy());
+            colliders.length = 0;
             if (projectile && projectile.active) {
                 projectile.destroy();
             }
+        };
+        enemies.forEach(enemy => {
+            if (!(enemy instanceof Enemy)) return;
+            const collider = scene.physics.add.collider(projectile, enemy, () => {
+                if (!projectile.active || !enemy.active) return;
+                enemy.takeDamage(this.getDamage());
+                cleanup();
+            });
+            colliders.push(collider);
         });
+
+        // Destroy projectile (and its colliders) after traveling max range or timeout
+        const maxDistance = ExplosionConfig.RADIUS * 3;
+        const maxLifetime = Math.ceil((maxDistance / this.projectileSpeed) * 1000);
+        scene.time.delayedCall(Math.min(4000, maxLifetime), cleanup);
     }
 
     public upgrade(): void {
@@ -109,7 +118,15 @@ export class Weapon implements IWeapon {
     }
 
     public upgradeSpeed(multiplier: number): void {
-        this.attackSpeed *= multiplier;
+        // Clamp to the hard cap so the Weapon Speed upgrade can actually max out
+        // (and then be filtered from the level-up pool instead of showing 4 -> 4).
+        this.attackSpeed = Math.min(this.attackSpeed * multiplier, GameConstants.WEAPONS.MAX_ATTACK_SPEED);
+    }
+
+    /** True once the basic weapon's attack speed has hit its hard cap. Used by the
+     *  level-up filter to drop the (now no-op) Weapon Speed upgrade from the pool. */
+    public isAttackSpeedMaxed(): boolean {
+        return this.attackSpeed >= GameConstants.WEAPONS.MAX_ATTACK_SPEED;
     }
 
     public upgradeProjectileSpeed(multiplier: number): void {

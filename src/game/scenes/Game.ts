@@ -4,12 +4,13 @@ import { Enemy } from "../entities/Enemy";
 import { Pickup } from "../entities/Pickup";
 import { EnemySpawnSystem } from "../systems/EnemySpawnSystem";
 import { WeaponSystem } from "../systems/WeaponSystem";
+import { WEAPON_CATALOG, WeaponUnlockTier, isWeaponUnlocked } from "../weapons/WeaponCatalog";
 import { ExperienceSystem } from "../systems/ExperienceSystem";
 import { GameUI } from "../ui/GameUI";
 import { PauseMenu } from "./PauseMenu";
 import { UIEffects } from "../effects/UIEffects";
 import { UpgradeSystem } from "../systems/UpgradeSystem";
-import { Upgrade, PickupType, CharacterId, GasCloudTag } from "../types/GameTypes";
+import { Upgrade, PickupType, CharacterId, GasCloudTag, UpgradeId } from "../types/GameTypes";
 import { PickupAssetGenerator } from "../utils/GeneratePickupAssets";
 import { GameConstants } from "../config/GameConstants";
 import { ExplosionConfig } from "../config/ExplosionConfig";
@@ -17,6 +18,7 @@ import { GameConfig } from "../config/GameConfig";
 import { BoostTimerUI } from "../ui/BoostTimerUI";
 import { EliteEnemy } from "../entities/EliteEnemy";
 import { RangedEnemy } from "../entities/RangedEnemy";
+import { ShriekerEnemy } from "../entities/ShriekerEnemy";
 import { RelicSystem } from "../systems/RelicSystem";
 import { LoadoutManager } from "../systems/LoadoutManager";
 import { BlueprintSystem } from "../systems/BlueprintSystem";
@@ -26,6 +28,17 @@ import { SpawningConfig } from "../systems/SpawningConfig";
 import { BlueprintDrop } from "../entities/BlueprintDrop";
 import { SceneKey } from "../config/SceneKeys";
 import { BossEnemy } from "../entities/BossEnemy";
+import { MissionSystem } from "../systems/MissionSystem";
+import { ExtractionSystem } from "../systems/ExtractionSystem";
+import { resolveMission } from "../config/Missions";
+import { Mission, MissionConditionKind } from "../types/MissionTypes";
+import { JobBoardSystem } from "../systems/JobBoardSystem";
+import { JobModifier, JobModifierKind } from "../types/JobBoardTypes";
+import { ExpeditionManager } from "../systems/ExpeditionManager";
+import { ExpeditionPlan, RunModifierSink, SupplyId, SurvivorOutcome, RiskModifierId } from "../types/ExpeditionTypes";
+import { SUPPLIES, PERKS, RISK_MODIFIERS } from "../config/Expedition";
+import { ReconSystem } from "../systems/ReconSystem";
+import { ReconCarryState } from "../types/ReconTypes";
 
 export class Game extends Scene {
     private player!: Player;
@@ -58,14 +71,82 @@ export class Game extends Scene {
     private skillButtonIcon: Phaser.GameObjects.Text | null = null;
     private isLevelUpPending: boolean = false;
     private eliteXPDelayUntil: number = 0;
+    // Relic-chest queue. Elite/boss deaths request a chest; we open them ONE AT A
+    // TIME so two elites dying in the same frame (now common with simultaneous
+    // elite spawns) don't stomp each other's LevelUpSelection and silently drop a
+    // reward. chestOpen = a chest selection is currently displayed.
+    private chestQueue: number = 0;
+    private chestOpen: boolean = false;
+    private missionSystem!: MissionSystem;
+    // Optional extraction-end phase. Constructed lazily in beginExtraction() when a
+    // mission with `extraction.enabled` completes its primary objective.
+    private extractionSystem?: ExtractionSystem;
+    private activeMission!: Mission;
+    // Run modifiers carried in from the accepted Job Board offer (§6.3).
+    private activeModifiers: JobModifier[] = [];
+    // Single latch so a WIN and a death resolving in the same frame can't both
+    // transition. Death takes precedence (Player.die has its own isDead guard).
+    private runEnded: boolean = false;
+    // Unique id per run, threaded into GameOver so CampSystem.advanceCycle is
+    // idempotent (a single run advances the camp exactly once).
+    private runId: string = '';
     // Toxic gas clouds registry for typed access by skills
     private __gasClouds?: Set<Phaser.GameObjects.Graphics & GasCloudTag>;
+
+    // Frozen Expedition plan handed in via scene-start data (§7.2 / §8).
+    private expeditionPlan!: ExpeditionPlan;
+    // Long Recon (§5): the node currently being run, and the in-run base upgrades
+    // chosen this node (tracked so they carry to the next node via carry-state).
+    private activeReconNodeId: string = '';
+    private reconChosenUpgradeIds: string[] = [];
+    // In-run medkit (heal) charges granted by MEDKIT supplies (§8). Bound to Q.
+    private medkitCharges: number = 0;
+    private medkitKey?: Phaser.Input.Keyboard.Key;
 
     constructor() {
         super({ key: SceneKey.Game });
     }
 
+    init(data?: { expeditionPlan?: ExpeditionPlan }) {
+        // Phaser reuses scene instances across scene.start()/restart(), so class-field
+        // initializers only run once (on first construction). Per-run state that other
+        // systems read (cumulative run time, the run-ended latch) MUST be reset here or
+        // it leaks across runs — e.g. a stale playTime breaks the survival HUD/payload.
+        this.playTime = 0;
+        this.runEnded = false;
+        this.chestQueue = 0;
+        this.chestOpen = false;
+
+        // Prefer the frozen plan passed by the Loadout scene; otherwise build one
+        // from the persisted draft so dev entry (SpawnTuner) never crashes (§10.2).
+        if (data?.expeditionPlan) {
+            this.expeditionPlan = data.expeditionPlan;
+        } else {
+            try {
+                this.expeditionPlan = ExpeditionManager.getInstance().buildPlan();
+            } catch {
+                this.expeditionPlan = ExpeditionManager.emptyPlan(
+                    LoadoutManager.getInstance().getMissionId()
+                );
+            }
+        }
+    }
+
     create() {
+        // Per-run cleanup. Phaser fires SHUTDOWN on the outgoing scene when it is
+        // stopped/restarted; it does NOT call a method named destroy(). Without
+        // this wiring, systems and event listeners leak and accumulate across runs.
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdownScene, this);
+
+        // Defensive recovery: if a previous run's scene was ever stopped while paused,
+        // Phaser's Arcade physics plugin may not have re-booted, leaving world === null.
+        // The exit paths now always resume before stopping (see prepareSceneExit /
+        // PauseMenu / Player.die), but re-create the world here so a stray path can
+        // never hard-crash create(). ArcadePhysics.start() only builds world if missing.
+        if (!this.physics.world) {
+            (this.physics as unknown as { start: () => void }).start();
+        }
+
         // Set the physics world bounds to be larger than the viewport
         const worldWidth = GameConfig.WORLD.WIDTH;
         const worldHeight = GameConfig.WORLD.HEIGHT;
@@ -135,9 +216,12 @@ export class Game extends Scene {
         // Initialize relic system (per-run)
         this.relicSystem = new RelicSystem(this);
 
-        // Apply character loadout
-        const lm = LoadoutManager.getInstance();
-        const character = lm.getCharacter();
+        // Apply character loadout. In Long Recon, the character/skill/killstreak come
+        // from the frozen expedition loadout (§6) so the build is stable mid-recon
+        // even if the player edits the menu; otherwise from LoadoutManager.
+        const recon = ReconSystem.getInstance();
+        const reconActive = recon.isActive();
+        const character = reconActive ? recon.getLoadout().characterId : LoadoutManager.getInstance().getCharacter();
         if (character === CharacterId.SOLDIER) {
             this.player.setMaxHealth(Math.floor(this.player.getStats().maxHealth * 1.2));
             this.player.heal(0);
@@ -150,10 +234,58 @@ export class Game extends Scene {
         // Apply permanent blueprints
         BlueprintSystem.applyToGame(this);
 
-        // Initialize skills and killstreak
+        // Apply the frozen Expedition plan: perks, risk modifiers, supplies, and
+        // assigned-survivor perks (§8). Reuses the existing stat-mutation path via
+        // makeRunModifierSink(); only enemy/vision/medkit hooks are new.
+        this.applyExpedition();
+
+        // Initialize skills and killstreak (frozen recon loadout when active, §6).
         const lmSkill = LoadoutManager.getInstance();
-        this.skillSystem = new SkillSystem(this, lmSkill.getDefensiveSkill());
-        this.killstreakSystem = new KillstreakSystem(this, lmSkill.getKillstreakPerk());
+        const defensiveSkill = reconActive ? recon.getLoadout().defensiveSkillId : lmSkill.getDefensiveSkill();
+        const killstreakPerk = reconActive ? recon.getLoadout().killstreakPerkId : lmSkill.getKillstreakPerk();
+        this.skillSystem = new SkillSystem(this, defensiveSkill);
+        this.killstreakSystem = new KillstreakSystem(this, killstreakPerk);
+
+        // Initialize the per-run mission (win condition). In Long Recon the mission is
+        // the tier-scaled node mission (§5.3/§8); otherwise prefer the accepted Job
+        // Board offer's mission, falling back to the legacy LoadoutManager id (§6.2).
+        if (reconActive) {
+            this.activeMission = recon.getActiveNodeMission();
+            this.activeReconNodeId = recon.getActiveNodeId();
+            this.applyReconCarryState(recon);
+            // Spawn-director tier scaling (§8.2).
+            const scaling = recon.getSpawnScaling(recon.getActiveNodeTier());
+            this.enemySpawnSystem.setEnemyDensityMult(scaling.densityMult);
+            this.enemySpawnSystem.setEliteIntervalMult(scaling.eliteIntervalMult);
+        } else {
+            const acceptedOffer = JobBoardSystem.getAcceptedOffer();
+            this.activeMission = acceptedOffer?.mission
+                ?? resolveMission(LoadoutManager.getInstance().getMissionId());
+            // Capture run modifiers + reward from the offer for application + payout.
+            this.activeModifiers = acceptedOffer?.modifiers ?? [];
+            this.applyRunModifiers();
+        }
+        this.runId = `run_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
+        this.missionSystem = new MissionSystem(this, this.activeMission);
+        this.events.on('mission_complete', this.handleMissionComplete, this);
+        // SLAY_BOSS may request an early boss spawn for a "boss rush" variant.
+        const cond = this.activeMission.condition;
+        if (cond.kind === MissionConditionKind.SLAY_BOSS && cond.forceEarlySpawnAtSeconds !== undefined) {
+            this.time.delayedCall(Math.max(0, cond.forceEarlySpawnAtSeconds * 1000), () => {
+                this.enemySpawnSystem.triggerBoss();
+            });
+        }
+        // KILL_ELITES: spawn the whole required group at once (mirrors the boss
+        // forceEarlySpawn pattern). The combined `elites_group_spawned` event drives a
+        // single group camera intro. The periodic elite timer stays gated on
+        // eliteAliveCount === 0, so it won't slip extra elites in while the group lives.
+        if (cond.kind === MissionConditionKind.KILL_ELITES) {
+            this.time.delayedCall(2500, () => {
+                this.enemySpawnSystem.spawnEliteGroup(cond.target);
+            });
+        }
+        // Brief mission banner at run start.
+        this.showMissionBanner();
 
         // Apply spawning tuner options at start — schedule after a short delay
         const sc = SpawningConfig.getInstance();
@@ -184,6 +316,11 @@ export class Game extends Scene {
             // Add escape key
             this.escapeKey = this.input.keyboard.addKey(
                 Phaser.Input.Keyboard.KeyCodes.ESC
+            );
+
+            // Medkit (Expedition supply) heal charge, bound to Q.
+            this.medkitKey = this.input.keyboard.addKey(
+                Phaser.Input.Keyboard.KeyCodes.Q
             );
         }
 
@@ -277,7 +414,8 @@ export class Game extends Scene {
         // Setup experience gain - Listener now updates ExperienceSystem and Player's total XP gained
         this.events.on("enemyKilled", (xp: number) => {
             const xpMult = this.relicSystem ? this.relicSystem.getXPMultiplier() : 1;
-            const gain = Math.round(xp * xpMult);
+            const killstreakXpMult = this.killstreakSystem ? this.killstreakSystem.getXPMult() : 1;
+            const gain = Math.round(xp * xpMult * killstreakXpMult);
             const now = this.time.now;
             if (now < this.eliteXPDelayUntil) {
                 const delay = this.eliteXPDelayUntil - now;
@@ -376,6 +514,59 @@ export class Game extends Scene {
             this.time.delayedCall(6000, tryResume);
         });
 
+        // Combined elite GROUP intro (KILL_ELITES): all elites spawn at once, so run a
+        // SINGLE intro — one pan/zoom, one prompt, one set of input listeners, one
+        // isEliteIntro set/clear. Pans to the CENTROID of the group (they're clustered on
+        // one shared side by spawnEliteGroup) and zooms out a touch for >1 elite. This is
+        // a near-verbatim copy of the single-elite intro above; do not also emit per-elite
+        // `elite_spawned` for the group or the two intros would fight over the camera.
+        this.events.on('elites_group_spawned', (elites: EliteEnemy[]) => {
+            if (!this.scene.isActive()) { return; }
+            if (!elites || elites.length === 0) { return; }
+            this.isEliteIntro = true;
+            this.physics.world.pause();
+
+            const cam = this.cameras.main;
+            const prevZoom = cam.zoom;
+            const cx = elites.reduce((s, e) => s + e.x, 0) / elites.length;
+            const cy = elites.reduce((s, e) => s + e.y, 0) / elites.length;
+            cam.stopFollow();
+            cam.pan(cx, cy, 350, 'Sine.easeInOut');
+            cam.zoomTo(elites.length > 1 ? 1.0 : 1.5, 350);
+
+            const prompt = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.18,
+                `${elites.length} ELITES — TAP TO CONTINUE`, {
+                    fontFamily: 'Arial Black', fontSize: '20px', color: '#ffff99', stroke: '#000000', strokeThickness: 6
+                }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
+
+            let resumed = false;
+            let allowInput = false;
+            const tryResume = () => {
+                if (!allowInput || resumed) return;
+                resumed = true;
+                prompt.destroy();
+                cam.pan(this.player.x, this.player.y, 320, 'Sine.easeInOut');
+                cam.zoomTo(prevZoom, 320);
+                this.time.delayedCall(330, () => {
+                    cam.startFollow(this.player);
+                    this.physics.world.resume();
+                    this.isEliteIntro = false;
+                });
+                this.input.off('pointerdown', tryResume);
+                this.input.keyboard?.off('keydown', tryResume);
+            };
+
+            // Register input immediately but gate it until allowed
+            this.input.on('pointerdown', tryResume);
+            this.input.keyboard?.on('keydown', tryResume);
+
+            // Enable input after 3 seconds
+            this.time.delayedCall(3000, () => { allowInput = true; });
+
+            // Safety auto-resume after 6 seconds
+            this.time.delayedCall(6000, tryResume);
+        });
+
         // Boss spawn intro: pause physics, pan to boss, show label, resume on input
         this.events.on('boss_spawned', (boss: BossEnemy) => {
             if (!this.scene.isActive()) { return; }
@@ -423,6 +614,11 @@ export class Game extends Scene {
         });
 
         this.events.on('elite_died', (pos?: {x:number,y:number}) => {
+            // If this kill also completed the mission (e.g. a KILL_ELITES job) or the
+            // player died in the same frame, the run is already ending — do NOT
+            // pause/launch a chest, or we'd stop the Game scene while paused and break
+            // Arcade physics on the next run (world=null).
+            if (this.runEnded || this.player?.getIsDead()) { return; }
             // Scene may be shutting down; guard camera access
             if (this.cameras && this.cameras.main) {
                 this.cameras.main.shake(200, 0.01);
@@ -433,21 +629,46 @@ export class Game extends Scene {
             if (pos && Math.random() < 0.5) {
                 this.spawnBlueprintDrops(pos.x, pos.y, 1);
             }
-            // Elite chest reward: pause and offer relics
-            this.scene.pause();
-            const upgrades = UpgradeSystem.getRandomRelicUpgradesFiltered(3, this.relicSystem.getAcquiredIds());
-            if (this.scene.isActive(SceneKey.LevelUpSelection)) {
-                this.scene.stop(SceneKey.LevelUpSelection);
-            }
-            this.scene.launch(SceneKey.LevelUpSelection, { player: this.player, upgrades });
+            // Elite chest reward: queue it so simultaneous elite deaths each get a
+            // chest in turn instead of stomping one another (see requestRelicChest).
+            this.requestRelicChest();
         });
 
-        // Boss drop: 1-2 blueprint points
+        // Boss death is the run's climax: a stronger victory beat plus a GUARANTEED
+        // reward (relic chest + blueprint points), versus the elite's conditional drop.
         this.events.on('boss_died', (pos?: {x:number,y:number}) => {
-            if (pos) {
-                const count = Phaser.Math.Between(1, 2);
-                this.spawnBlueprintDrops(pos.x, pos.y, count);
+            // If this kill also completed the mission (e.g. a SLAY_BOSS job) or the
+            // player died this frame, the run is already ending — skip the chest pause
+            // so we never stop the Game scene while paused (which leaves Arcade physics
+            // unable to re-boot: world=null next run).
+            if (this.runEnded || this.player?.getIsDead()) { return; }
+            // Victory beat: bigger camera shake than an elite kill (200/0.01),
+            // a celebratory banner, and a particle burst (reuses UIEffects).
+            if (this.cameras && this.cameras.main) {
+                this.cameras.main.shake(600, 0.025);
             }
+            this.uiEffects.showStateText('VICTORY!', {
+                color: '#ffd700',
+                fontSize: '72px',
+                duration: 2000,
+                glowColor: 0xffd700,
+                glowIntensity: 8,
+                scale: { from: 0.5, to: 1.3 },
+                particles: true,
+            });
+
+            // Delay XP gain briefly so a level-up doesn't interrupt the reward chest.
+            this.eliteXPDelayUntil = this.time.now + 2000;
+
+            // GUARANTEED blueprint points (upper end of the old 1-2 range).
+            if (pos) {
+                this.spawnBlueprintDrops(pos.x, pos.y, 2);
+            }
+
+            // GUARANTEED relic chest: reuse the exact elite chest flow
+            // (pause -> offer 3 weighted relics -> LevelUpSelection resumes on pick),
+            // queued so it can't be stomped by a same-frame elite chest.
+            this.requestRelicChest();
         });
 
         // Mobile skill button (bottom-right)
@@ -481,8 +702,39 @@ export class Game extends Scene {
         if (this.scene.isPaused()) return;
         if (this.isEliteIntro) return;
 
+        // Expedition medkit charge: press Q to spend a charge and heal (§8).
+        if (this.medkitKey && Phaser.Input.Keyboard.JustDown(this.medkitKey)) {
+            this.useMedkit();
+        }
+
         // Update play time (in seconds)
         this.playTime += this.game.loop.delta / 1000;
+
+        // Advance the mission (polled conditions: survive/zone/flawless) and check win.
+        // Runs after the pause / elite-intro early-returns above, so spatial/time
+        // conditions correctly do not tick during a cinematic pause.
+        if (this.missionSystem) {
+            this.missionSystem.update(
+                this.game.loop.delta / 1000,
+                this.playTime,
+                this.player.x,
+                this.player.y
+            );
+            if (this.missionSystem.isComplete() && !this.runEnded) {
+                this.handleMissionComplete(this.missionSystem.getMission());
+            }
+        }
+
+        // Advance the optional Extraction phase (dwell timer + zone marker). The
+        // dwell completing emits extraction_complete → finishWin (guarded by a done
+        // latch + death check so a same-frame death loses, not wins).
+        if (this.extractionSystem && !this.runEnded) {
+            this.extractionSystem.update(
+                this.game.loop.delta / 1000,
+                this.player.x,
+                this.player.y
+            );
+        }
 
         // Update player movement with both keyboard and touch input
         this.player.update(this.cursors, this.wasdKeys, this.initialTouchPoint, this.currentTouchPoint);
@@ -501,9 +753,15 @@ export class Game extends Scene {
         const enemyChildren = this.enemies.getChildren() as Enemy[];
         enemyChildren.forEach((enemy) => {
             if (!enemy.active) return;
-            if (enemy instanceof EliteEnemy) {
+            if (enemy instanceof BossEnemy) {
+                // Boss drives its own phases/attacks; it is an Enemy but not an
+                // EliteEnemy, so it must be dispatched explicitly or its AI never runs.
+                enemy.update(this.player);
+            } else if (enemy instanceof EliteEnemy) {
                 enemy.update(this.player);
             } else if (enemy instanceof RangedEnemy) {
+                enemy.updateBehavior(this.player);
+            } else if (enemy instanceof ShriekerEnemy) {
                 enemy.updateBehavior(this.player);
             } else {
                 (enemy as Enemy).moveTowardsPlayer(this.player);
@@ -512,6 +770,15 @@ export class Game extends Scene {
 
         // Update UI
         this.gameUI.update(this.player.getStats());
+
+        // Objective HUD
+        if (this.missionSystem) {
+            this.gameUI.updateObjective(
+                this.missionSystem.getProgress(),
+                this.activeMission.name,
+                this.missionSystem.getDetailLabel()
+            );
+        }
         // Skill cooldown HUD + mobile button feedback
         if (this.skillSystem) {
             const total = this.skillSystem.getCooldownTotalMs();
@@ -567,6 +834,35 @@ export class Game extends Scene {
         return this.weaponSystem;
     }
 
+    // Expose defensive skill system for upgrade effects
+    public getSkillSystem(): SkillSystem {
+        return this.skillSystem;
+    }
+
+    // Upgrade ids that should no longer be offered (e.g. capped unlock-style upgrades)
+    private getCappedUpgradeIds(): Set<string> {
+        const excluded = new Set<string>();
+        if (this.skillSystem?.isMaxLevel()) {
+            excluded.add(UpgradeId.SKILL_MASTERY);
+        }
+        // Drop stat upgrades that have hit their hard cap so they're never offered
+        // as a dead "X -> X" choice (the player gets a meaningful option instead).
+        if (this.weaponSystem?.isWeaponSpeedMaxed()) {
+            excluded.add(UpgradeId.WEAPON_SPEED);
+        }
+        if (this.player && this.player.getMovementSpeed() >= GameConstants.PLAYER.MAX_MOVEMENT_SPEED) {
+            excluded.add(UpgradeId.SPEED_BOOST);
+        }
+        // Filter weapon offers by unlock state: STARTER is always owned (never
+        // offered), and gate-locked weapons (Void Orb until its city special is
+        // minted) never appear in the level-up pool.
+        for (const def of WEAPON_CATALOG) {
+            if (def.tier === WeaponUnlockTier.STARTER) { excluded.add(def.id); continue; }
+            if (!isWeaponUnlocked(def)) excluded.add(def.id);
+        }
+        return excluded;
+    }
+
     public getCursors(): Phaser.Types.Input.Keyboard.CursorKeys {
         return this.cursors;
     }
@@ -620,6 +916,88 @@ export class Game extends Scene {
         this.player.heal(0);
     }
 
+    // ─────────────────────── Expedition Loadout (§8) ───────────────────────
+
+    /** Apply the frozen Expedition plan to the run via a RunModifierSink. */
+    private applyExpedition(): void {
+        const plan = this.expeditionPlan;
+        if (!plan) return;
+        const sink = this.makeRunModifierSink();
+        const ironman = plan.risks.includes(RiskModifierId.IRONMAN);
+
+        // 1. Perks (SUPPLY_CAP/SURVIVAL/ON_WIN already baked into derived).
+        for (const perkId of plan.perks) {
+            const perk = PERKS.find(p => p.id === perkId);
+            if (perk) ExpeditionManager.applyPerk(perk, sink);
+        }
+
+        // 2. Risk modifiers (mutate run config: density/damage/elite/vision).
+        for (const id of plan.risks) {
+            RISK_MODIFIERS.find(r => r.id === id)?.apply(sink);
+        }
+
+        // 3. Supplies — one-shot stat applies + in-run charges (skipped on Ironman).
+        if (!ironman) {
+            for (const s of plan.supplies) {
+                const def = SUPPLIES.find(d => d.id === s.id);
+                if (!def) continue;
+                for (let i = 0; i < s.qty; i++) def.apply(sink);
+            }
+        }
+
+        // 4. Assigned-survivor perks (no-op for the synthetic count roster today).
+        for (const a of plan.survivors) {
+            ExpeditionManager.applyPerk(a.perk, sink);
+        }
+    }
+
+    /** A RunModifierSink whose stat methods delegate to existing Game accessors. */
+    private makeRunModifierSink(): RunModifierSink {
+        return {
+            adjustMaxHealth: (m) => this.playerAdjustMaxHealth(m),
+            applyAsymptoticSpeed: (m) => this.playerApplyAsymptoticSpeed(m),
+            upgradeWeaponDamage: (m) => this.weaponSystem.upgradeWeaponDamage(m),
+            upgradeWeaponSpeed: (m) => this.weaponSystem.upgradeWeaponSpeed(m),
+            upgradeProjectileSpeed: (m) => this.weaponSystem.upgradeProjectileSpeed(m),
+            setXPMultiplier: (m) => {
+                // Compose with any existing multiplier rather than overwrite it.
+                const rs = this.relicSystem;
+                rs.setXPMultiplier(rs.getXPMultiplier() * m);
+            },
+            grantSupplyCharge: (id, qty) => {
+                if (id === SupplyId.MEDKIT) this.medkitCharges += qty;
+            },
+            setEnemyDensityMult: (m) => this.enemySpawnSystem.setEnemyDensityMult(m),
+            setEnemyDamageMult: (m) => this.enemySpawnSystem.setEnemyDamageMult(m),
+            setEliteIntervalMult: (m) => this.enemySpawnSystem.setEliteIntervalMult(m),
+            setVision: (m) => {
+                // Zoom out (>1) = wider view; zoom in (<1) = fog/restricted view.
+                this.cameras.main.setZoom(1 / Math.max(0.25, m));
+            },
+        };
+    }
+
+    /** Spend one medkit charge to heal the player (§8). */
+    private useMedkit(): void {
+        if (this.medkitCharges <= 0) return;
+        if (!this.player || this.player.getIsDead()) return;
+        this.medkitCharges -= 1;
+        const healAmount = Math.ceil(this.player.getStats().maxHealth * 0.5);
+        this.player.heal(healAmount);
+        this.showFloatingText(`Medkit (+${healAmount} HP)`, this.player.x, this.player.y - 30, 0x66ff66);
+    }
+
+    /** Resolve assigned-survivor injury/death for the run. Called once inside the
+     *  runEnded latch by both terminus paths (§6.3). Returns outcomes for GameOver. */
+    private resolveSurvivors(outcome: 'win' | 'lose'): SurvivorOutcome[] {
+        if (!this.expeditionPlan) return [];
+        try {
+            return ExpeditionManager.getInstance().resolveSurvivors(outcome, this.expeditionPlan, this.runId);
+        } catch {
+            return [];
+        }
+    }
+
     private spawnBlueprintDrops(x: number, y: number, count: number): void {
         for (let i = 0; i < count; i++) {
             const ox = Phaser.Math.Between(-24, 24);
@@ -650,6 +1028,17 @@ export class Game extends Scene {
 
         // Allow the built-in level up effect (UIEffects listener) to play for 1s, then pause and show menu
         this.time.delayedCall(1000, () => {
+            // The player may have died during the delay; never pop the level-up
+            // menu after death or it would soft-lock on top of the GameOver screen.
+            if (!this.player || this.player.getIsDead() || !this.scene.isActive() || this.runEnded) {
+                this.isLevelUpPending = false;
+                return;
+            }
+
+            // Remove the celebratory "LEVEL UP!" banner so it doesn't bleed
+            // through the selection menu's overlay while it finishes fading.
+            this.uiEffects?.clearLevelUpText();
+
             // Pause the game
             this.scene.pause();
 
@@ -661,7 +1050,7 @@ export class Game extends Scene {
             // 15% chance to offer relics instead of upgrades
             const upgrades = Math.random() < 0.15
                 ? UpgradeSystem.getRandomRelicUpgrades(3)
-                : UpgradeSystem.getRandomUpgrades(3);
+                : UpgradeSystem.getRandomUpgrades(3, this.getCappedUpgradeIds());
 
             // Launch the level up selection scene
             this.scene.launch(SceneKey.LevelUpSelection, {
@@ -675,11 +1064,367 @@ export class Game extends Scene {
         selectedUpgrade: Upgrade | null
     ): void {
         console.log("Level up selection complete:", selectedUpgrade);
+        // Long Recon (§5.3): track chosen BASE upgrades so they carry to the next
+        // node. Relic and weapon picks are carried by RelicSystem / WeaponSystem ids
+        // captured directly in captureCarryState(), so only base stat upgrades that
+        // UpgradeSystem can re-apply by id are recorded here.
+        if (selectedUpgrade && ReconSystem.getInstance().isActive()) {
+            if (UpgradeSystem.getById(selectedUpgrade.id)) {
+                this.reconChosenUpgradeIds.push(selectedUpgrade.id);
+            }
+        }
         // The game scene is already resumed by the LevelUpSelection scene
         // We can add additional logic here if needed
         this.scene.resume();
         // Allow future level-ups to schedule their menu
         this.isLevelUpPending = false;
+        // This selection (chest or level-up) is done; surface the next queued chest
+        // if any. Covers chest->chest and level-up->chest hand-offs. Deferred one
+        // tick because LevelUpSelection emits this event BEFORE it stops itself, so
+        // scene.isActive(LevelUpSelection) is still true right now — opening the next
+        // chest synchronously would trip tryOpenNextChest's active-menu guard.
+        this.chestOpen = false;
+        this.time.delayedCall(0, () => this.tryOpenNextChest());
+    }
+
+    // Enqueue a relic chest (elite/boss reward) and surface it if nothing is open.
+    private requestRelicChest(): void {
+        this.chestQueue++;
+        this.tryOpenNextChest();
+    }
+
+    // Open the next queued relic chest, one at a time. No-op while a chest is
+    // already displayed, the queue is empty, the run is ending, or a level-up
+    // menu currently owns the screen (it will re-drive us via the resume handler).
+    private tryOpenNextChest(): void {
+        if (this.chestOpen || this.chestQueue <= 0) { return; }
+        if (this.runEnded || this.player?.getIsDead()) { this.chestQueue = 0; return; }
+        if (this.scene.isActive(SceneKey.LevelUpSelection)) { return; }
+        this.chestQueue--;
+        this.chestOpen = true;
+        this.scene.pause();
+        // Weighted relic offer; top up with regular upgrades when few relics remain
+        // so the menu always has clickable options and can never soft-lock.
+        let upgrades = UpgradeSystem.getRandomRelicUpgradesFiltered(3, this.relicSystem.getAcquiredIds(), {
+            playTimeSec: this.getPlayTime(),
+            level: this.player.getStats().level,
+            fromChest: true
+        });
+        if (upgrades.length < 3) {
+            upgrades = upgrades.concat(UpgradeSystem.getRandomUpgrades(3 - upgrades.length, this.getCappedUpgradeIds()));
+        }
+        this.scene.launch(SceneKey.LevelUpSelection, { player: this.player, upgrades });
+    }
+
+    // Expose the mission system so the death path can label the failed objective.
+    public getMissionSystem(): MissionSystem | undefined {
+        return this.missionSystem;
+    }
+
+    // Run identity / mission id for the GameOver -> CampSystem cycle hook.
+    public getRunId(): string { return this.runId; }
+    public getActiveMissionId(): string | undefined { return this.activeMission?.id; }
+
+    /**
+     * Death-path survivor resolution (§6.3). Player.die() transitions to GameOver
+     * itself, so it calls this to settle assigned-survivor fates under the SAME
+     * runEnded latch the win/timeout paths use — guaranteeing exactly-once
+     * resolution even on a same-frame win+death race.
+     */
+    public resolveSurvivorsForDeath(): SurvivorOutcome[] {
+        if (this.runEnded) return [];
+        this.runEnded = true;
+        return this.resolveSurvivors('lose');
+    }
+
+    // ─────────────────────── Long Recon carry-state (§5) ───────────────────────
+
+    /**
+     * Re-apply the carried character state at the start of a recon node (§5.3).
+     * Runs AFTER the normal loadout/blueprint application so it overwrites with the
+     * carried absolute values (max HP, level/XP) and re-instantiates weapons /
+     * upgrades / relics by id. The first node carries 0 maxHealth (a sentinel that
+     * means "keep the run's freshly-computed stats").
+     */
+    private applyReconCarryState(recon: ReconSystem): void {
+        const carry = recon.getCarry();
+        // First node: nothing to restore (maxHealth sentinel 0) — leave fresh stats.
+        if (carry.maxHealth > 0) {
+            this.player.setMaxHealth(carry.maxHealth);
+            this.player.setHealthAbsolute(carry.currentHealth);
+            this.experienceSystem.restore(carry.level, carry.totalXP);
+        }
+        carry.unlockedWeaponIds.forEach(id => this.weaponSystem.unlockById(id));
+        carry.upgradeIds.forEach(id => UpgradeSystem.reapply(this.player, id));
+        carry.relicIds.forEach(id => this.relicSystem.reapply(id));
+        // Seed the per-node chosen-upgrade tracker with what's already carried so
+        // the next capture is cumulative across the whole recon.
+        this.reconChosenUpgradeIds = carry.upgradeIds.slice();
+    }
+
+    /** Snapshot the live player/systems into a value-only carry-state (§5.4). */
+    private captureCarryState(): ReconCarryState {
+        const s = this.player.getStats();
+        return {
+            maxHealth: s.maxHealth,
+            currentHealth: this.player.getCurrentHealth(),
+            level: this.experienceSystem.getCurrentLevel(),
+            totalXP: this.experienceSystem.getTotalXP(),
+            unlockedWeaponIds: this.weaponSystem.getUnlockedIds(),
+            upgradeIds: this.reconChosenUpgradeIds.slice(),
+            relicIds: Array.from(this.relicSystem.getAcquiredIds()),
+        };
+    }
+
+    // WIN transition. Mirrors the overlay cleanup Player.die() does, then routes to
+    /**
+     * Dismiss overlay scenes (level-up / pause) AND un-pause the Game scene before
+     * we stop it to transition to GameOver/RouteMap. Phaser leaves Arcade physics
+     * unable to re-boot (`physics.world === null` on the next run's create()) if a
+     * scene is stopped while paused — so every exit MUST resume first. resume() on a
+     * non-paused scene is a harmless no-op.
+     */
+    private prepareSceneExit(): void {
+        const sm = this.scene;
+        if (sm.isActive(SceneKey.LevelUpSelection)) sm.stop(SceneKey.LevelUpSelection);
+        if (sm.isActive(SceneKey.PauseMenu)) sm.stop(SceneKey.PauseMenu);
+        sm.resume();
+    }
+
+    // Single choke point for the primary mission_complete signal. Either reroutes
+    // into the optional Extraction phase or pays out the win via finishWin().
+    private handleMissionComplete(mission: Mission): void {
+        if (this.runEnded) return;
+        if (this.player && this.player.getIsDead()) return;
+
+        // Optional Extraction end (spec §1): when the primary objective completes
+        // and extraction is enabled, flip the run into a survival Extraction phase
+        // instead of ending. Guarded by isActive()/isDone() so the single
+        // mission_complete signal reroutes here exactly once; the real win comes
+        // later via extraction_complete → finishWin. Missions without the flag fall
+        // straight through to finishWin (zero behavior change).
+        if (
+            mission.extraction?.enabled &&
+            !this.extractionSystem?.isActive() &&
+            !this.extractionSystem?.isDone()
+        ) {
+            this.beginExtraction(mission);
+            return; // do NOT end the run yet
+        }
+
+        this.finishWin(mission);
+    }
+
+    /**
+     * Construct + arm the ExtractionSystem, start uncapped rear-biased spawning,
+     * and wire extraction_complete → finishWin. The run does not end until the
+     * player survives the dwell.
+     */
+    private beginExtraction(mission: Mission): void {
+        if (this.extractionSystem?.isActive() || this.extractionSystem?.isDone()) return;
+
+        const px = this.player.x;
+        const py = this.player.y;
+
+        this.extractionSystem = new ExtractionSystem(this, mission, this.enemySpawnSystem);
+        this.extractionSystem.begin(px, py);
+
+        // Drive uncapped directional spawning, biased away from the exit zone.
+        const zone = this.extractionSystem.getZone();
+        this.enemySpawnSystem.beginExtractionSpawning(zone);
+
+        // The real win: survive the dwell → pay out via the normal win path.
+        this.events.once('extraction_complete', (m: Mission) => {
+            this.finishWin(m);
+        });
+
+        this.showExtractionBanner();
+    }
+
+    private showExtractionBanner(): void {
+        const cam = this.cameras.main;
+        const banner = this.add.text(cam.width / 2, cam.height * 0.28,
+            `EXTRACTION\nReach the marked zone and hold!`, {
+                fontFamily: 'Arial Black', fontSize: '26px', color: '#44ff88',
+                stroke: '#000000', strokeThickness: 6, align: 'center',
+                wordWrap: { width: Math.min(640, cam.width * 0.85) }
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
+        this.tweens.add({
+            targets: banner,
+            alpha: 0,
+            delay: 2500,
+            duration: 800,
+            onComplete: () => banner.destroy(),
+        });
+    }
+
+    // GameOver with outcome:'win'. Guarded by runEnded so it fires at most once and
+    // never races a death (death wins via Player.die's own isDead latch). Reached
+    // either directly (non-extraction missions) or via extraction_complete.
+    private finishWin(mission: Mission): void {
+        if (this.runEnded) return;
+        if (this.player && this.player.getIsDead()) return;
+        this.runEnded = true;
+
+        // Extraction is over (if any) — stop uncapped spawning + drop the marker.
+        this.extractionSystem?.destroy();
+
+        // Long Recon (§5.2): a node WIN does NOT go to GameOver. Capture carry-state,
+        // accrue the node reward into pending, then return to the RouteMap — UNLESS
+        // this was the boss node, which banks all pending rewards and shows the win
+        // screen. Branch before the standalone GameOver payout path below.
+        const recon = ReconSystem.getInstance();
+        if (recon.isActive()) {
+            const carry = this.captureCarryState();
+            const nodeId = this.activeReconNodeId || recon.getActiveNodeId();
+            const wasBoss = recon.isBossNode(nodeId);
+            recon.completeNode(nodeId, carry);
+
+            this.prepareSceneExit();
+
+            if (wasBoss) {
+                const payout = recon.completeRecon();
+                this.scene.start(SceneKey.GameOver, {
+                    outcome: 'win',
+                    missionName: mission.name,
+                    missionId: mission.id,
+                    reconPayout: payout,
+                    enemiesKilled: this.player.getEnemiesKilled(),
+                    xpGained: this.player.getXPGained(),
+                    levelReached: this.player.getStats().level,
+                    playTimeSeconds: this.gameUI ? this.gameUI.getGameTime() : Math.floor(this.playTime),
+                });
+            } else {
+                this.scene.start(SceneKey.RouteMap);
+            }
+            return;
+        }
+
+        // Blueprint points (and all camp resources) are awarded by
+        // CampSystem.advanceCycle in GameOver, which owns the won-mission reward.
+        // We only surface the BP figure here for the GameOver stats line. Prefer
+        // the accepted Job Board offer's reward (generated missions have no
+        // Mission.reward of their own).
+        // Reward scaling (§5): base BP from the offer/mission scaled by the plan's
+        // risk-modifier multiplier, plus any flat ON_WIN perk bonus. GameOver pays
+        // the camp once (idempotent by runId); we scale the figure it consumes.
+        const offer = JobBoardSystem.getAcceptedOffer();
+        const baseBP = offer?.reward.camp.blueprintPoints ?? mission.reward?.blueprintPoints ?? 0;
+        const mult = this.expeditionPlan?.derived.rewardMultiplier ?? 1;
+        const onWin = this.expeditionPlan?.derived.onWinBonusPoints ?? 0;
+        const awardedPoints = Math.round(baseBP * mult) + onWin;
+
+        // Resolve assigned survivors exactly once, inside the runEnded latch (§6.3).
+        const survivorOutcomes = this.resolveSurvivors('win');
+
+        // City Reclamation (§6.2): if this run carried an accepted zone job, hand its
+        // ids + difficulty to GameOver so CityReclamationSystem.applyJobWin() can drop
+        // the zone's infestation on the win edge (pure localStorage; zero in-run cost).
+        const zoneJob = LoadoutManager.getInstance().getActiveZoneJob();
+
+        const playTime = this.gameUI ? this.gameUI.getGameTime() : Math.floor(this.playTime);
+
+        // Dismiss overlay scenes (and un-pause) so nothing lingers on GameOver and
+        // physics can re-boot next run.
+        this.prepareSceneExit();
+
+        this.scene.start(SceneKey.GameOver, {
+            outcome: 'win',
+            missionName: mission.name,
+            missionId: mission.id,
+            runId: this.runId,
+            blueprintPointsAwarded: awardedPoints,
+            rewardMultiplier: mult,
+            onWinBonusPoints: onWin,
+            survivorOutcomes,
+            zoneId: zoneJob?.zoneId,
+            jobId: zoneJob?.jobId,
+            zoneDifficulty: mission.difficulty ?? 1,
+            enemiesKilled: this.player.getEnemiesKilled(),
+            xpGained: this.player.getXPGained(),
+            levelReached: this.player.getStats().level,
+            playTimeSeconds: playTime,
+        });
+    }
+
+    /**
+     * Apply run modifiers carried in from the accepted Job Board offer (§6.3).
+     * Modifiers backed by an existing knob are applied; the rest degrade
+     * gracefully (no-op + console.warn) so the board ships before every knob.
+     * TODO(phase: modifiers) Wire HAZARD_FIELD/ENEMY_BUFF/SCARCITY/
+     * TYPE_INFESTATION setters on EnemySpawnSystem.
+     */
+    private applyRunModifiers(): void {
+        for (const m of this.activeModifiers) {
+            switch (m.kind) {
+                case JobModifierKind.ENEMY_DENSITY:
+                    // Scale spawn pressure (count/cap) for the whole run.
+                    this.enemySpawnSystem.setEnemyDensityMult(m.multiplier);
+                    break;
+                case JobModifierKind.ELITE_CADENCE:
+                    // Tighten/loosen the elite spawn timer. The base interval is
+                    // 90000ms (see EnemySpawnSystem.setupEliteTimer), so convert
+                    // the absolute intervalMs into the multiplier the setter wants.
+                    this.enemySpawnSystem.setEliteIntervalMult(m.intervalMs / 90000);
+                    break;
+                case JobModifierKind.BOSS_TIMING:
+                    // Schedule an early/late boss spawn (triggerBoss is public).
+                    this.time.delayedCall(Math.max(0, m.spawnAtSeconds * 1000), () => {
+                        this.enemySpawnSystem.triggerBoss();
+                    });
+                    break;
+                case JobModifierKind.TIME_LIMIT:
+                    // Hard run timer: if the win condition isn't met in time, force LOSE
+                    // through the same GameOver path a death uses (runEnded latch guards
+                    // against a double transition vs a win/death in the same frame).
+                    this.time.delayedCall(Math.max(0, m.seconds * 1000), () => {
+                        if (!this.runEnded) this.forceLoseRun();
+                    });
+                    break;
+                default:
+                    console.warn(`[Game] Run modifier '${m.kind}' has no backing setter yet; ignoring.`);
+                    break;
+            }
+        }
+    }
+
+    // Non-death LOSE transition (used by TIME_LIMIT modifier). Mirrors the
+    // outcome:'lose' GameOver payload Player.die produces.
+    private forceLoseRun(): void {
+        if (this.runEnded) return;
+        if (this.player && this.player.getIsDead()) return;
+        this.runEnded = true;
+        const survivorOutcomes = this.resolveSurvivors('lose');
+        const playTime = this.gameUI ? this.gameUI.getGameTime() : Math.floor(this.playTime);
+        this.prepareSceneExit();
+        this.scene.start(SceneKey.GameOver, {
+            outcome: 'lose',
+            missionName: this.activeMission.name,
+            missionId: this.activeMission.id,
+            runId: this.runId,
+            survivorOutcomes,
+            enemiesKilled: this.player.getEnemiesKilled(),
+            xpGained: this.player.getXPGained(),
+            levelReached: this.player.getStats().level,
+            playTimeSeconds: playTime,
+        });
+    }
+
+    private showMissionBanner(): void {
+        const cam = this.cameras.main;
+        const banner = this.add.text(cam.width / 2, cam.height * 0.28,
+            `OBJECTIVE\n${this.activeMission.name}\n${this.activeMission.description}`, {
+                fontFamily: 'Arial Black', fontSize: '24px', color: '#00ffff',
+                stroke: '#000000', strokeThickness: 6, align: 'center',
+                wordWrap: { width: Math.min(640, cam.width * 0.85) }
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
+        this.tweens.add({
+            targets: banner,
+            alpha: 0,
+            delay: 2500,
+            duration: 800,
+            onComplete: () => banner.destroy(),
+        });
     }
 
     private handlePlayerPickupCollision(player: Player, pickup: Pickup): void {
@@ -742,7 +1487,13 @@ export class Game extends Scene {
                         0xff0000
                     );
                     break;
+                case PickupType.AIRSTRIKE:
+                    this.triggerAirstrike(pickup.x, pickup.y);
+                    break;
             }
+
+            // Notify the mission system (COLLECT_DROPS) that a pickup was collected.
+            this.events.emit('pickupCollected', { type: pickup.getType() });
 
             // Play collection animation and destroy the pickup
             pickup.collect();
@@ -832,7 +1583,7 @@ export class Game extends Scene {
     }
 
     // Add a new method to create the explosion effect
-    private createExplosionEffect(x: number, y: number): void {
+    private createExplosionEffect(x: number, y: number, radiusMultiplier: number = 1): void {
         // Get the player's current weapon damage
         const weaponSystem = this.weaponSystem;
         const weapons = weaponSystem.getWeapons();
@@ -842,27 +1593,31 @@ export class Game extends Scene {
         // Calculate explosion damage
         const explosionDamage = baseDamage * ExplosionConfig.DAMAGE_MULTIPLIER;
         
-        // Create explosion radius
-        const explosionRadius = ExplosionConfig.RADIUS;
+        // Create explosion radius (BOMB uses full radius; airstrike blasts are "medium")
+        const explosionRadius = ExplosionConfig.RADIUS * radiusMultiplier;
         
-        // Create explosion visual effect
+        // Create explosion visual effect.
+        // Draw circles centered at the graphics object's local origin (0, 0) and
+        // position the object itself at (x, y). This keeps scale tweens centered
+        // on the blast instead of scaling away from the world origin (0, 0).
         const explosion = this.add.graphics();
         explosion.setDepth(ExplosionConfig.VISUAL.MAIN.DEPTH);
         explosion.setScrollFactor(1);
+        explosion.setPosition(x, y);
         explosion.fillStyle(ExplosionConfig.VISUAL.MAIN.OUTER_COLOR, ExplosionConfig.VISUAL.MAIN.OUTER_ALPHA);
-        explosion.fillCircle(x, y, explosionRadius);
-        
+        explosion.fillCircle(0, 0, explosionRadius);
+
         // Add a white border
         explosion.lineStyle(
             ExplosionConfig.VISUAL.MAIN.BORDER_WIDTH,
             ExplosionConfig.VISUAL.MAIN.BORDER_COLOR,
             ExplosionConfig.VISUAL.MAIN.BORDER_ALPHA
         );
-        explosion.strokeCircle(x, y, explosionRadius);
-        
+        explosion.strokeCircle(0, 0, explosionRadius);
+
         // Add a smaller inner circle
         explosion.fillStyle(ExplosionConfig.VISUAL.MAIN.INNER_COLOR, ExplosionConfig.VISUAL.MAIN.INNER_ALPHA);
-        explosion.fillCircle(x, y, explosionRadius * ExplosionConfig.VISUAL.MAIN.INNER_RADIUS_MULTIPLIER);
+        explosion.fillCircle(0, 0, explosionRadius * ExplosionConfig.VISUAL.MAIN.INNER_RADIUS_MULTIPLIER);
         
         // Add explosion particles
         for (let i = 0; i < ExplosionConfig.VISUAL.PARTICLES.COUNT; i++) {
@@ -937,6 +1692,89 @@ export class Game extends Scene {
         });
     }
 
+    /**
+     * AIRSTRIKE pickup effect. Finds the densest cluster of active enemies,
+     * marks it with a targeting reticle, and after a delay drops a staggered
+     * sequence of medium explosions scattered around the marked location.
+     */
+    private triggerAirstrike(fallbackX: number, fallbackY: number): void {
+        // Tuning constants for the airstrike sequence.
+        const CLUSTER_RADIUS = 150;        // px, radius used to count clustered enemies
+        const WARNING_DELAY = 4000;        // ms before the bombs drop (3-5s window)
+        const EXPLOSION_COUNT = 6;         // number of medium explosions (5-8)
+        const SEQUENCE_DURATION = 1500;    // ms over which the explosions are staggered
+        const SCATTER_RADIUS = 200;        // px, how far blasts scatter from the marker
+        const BLAST_RADIUS_MULTIPLIER = 0.6; // "medium" explosions vs full BOMB radius
+
+        // Find the densest cluster center among active enemies.
+        const enemies = (this.enemies.getChildren() as Enemy[]).filter(e => e.active);
+        let targetX = fallbackX;
+        let targetY = fallbackY;
+
+        if (enemies.length > 0) {
+            let bestCount = -1;
+            for (const enemy of enemies) {
+                let count = 0;
+                for (const other of enemies) {
+                    if (Phaser.Math.Distance.Between(enemy.x, enemy.y, other.x, other.y) <= CLUSTER_RADIUS) {
+                        count++;
+                    }
+                }
+                if (count > bestCount) {
+                    bestCount = count;
+                    targetX = enemy.x;
+                    targetY = enemy.y;
+                }
+            }
+        }
+
+        // Floating warning text.
+        this.showFloatingText("AIRSTRIKE INCOMING!", targetX, targetY - 40, 0x66ccff);
+
+        // Build a pulsing targeting reticle (concentric circles + crosshair).
+        const marker = this.add.graphics();
+        marker.setDepth(ExplosionConfig.VISUAL.MAIN.DEPTH);
+        marker.setScrollFactor(1);
+        marker.setPosition(targetX, targetY);
+        const reticleRadius = 60;
+        marker.lineStyle(4, 0x66ccff, 0.9);
+        marker.strokeCircle(0, 0, reticleRadius);
+        marker.strokeCircle(0, 0, reticleRadius * 0.6);
+        marker.lineStyle(2, 0xffffff, 0.9);
+        marker.lineBetween(-reticleRadius - 10, 0, reticleRadius + 10, 0);
+        marker.lineBetween(0, -reticleRadius - 10, 0, reticleRadius + 10);
+
+        const markerTween = this.tweens.add({
+            targets: marker,
+            scale: 1.25,
+            alpha: 0.4,
+            duration: 500,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // After the warning delay, drop the staggered explosion sequence.
+        this.time.delayedCall(WARNING_DELAY, () => {
+            for (let i = 0; i < EXPLOSION_COUNT; i++) {
+                const stagger = (i / EXPLOSION_COUNT) * SEQUENCE_DURATION;
+                this.time.delayedCall(stagger, () => {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.random() * SCATTER_RADIUS;
+                    const bx = targetX + Math.cos(angle) * dist;
+                    const by = targetY + Math.sin(angle) * dist;
+                    this.createExplosionEffect(bx, by, BLAST_RADIUS_MULTIPLIER);
+                });
+            }
+
+            // Remove the marker once the full sequence has finished.
+            this.time.delayedCall(SEQUENCE_DURATION + 200, () => {
+                markerTween.stop();
+                marker.destroy();
+            });
+        });
+    }
+
     // Add a method to clean up the collected pickups set when a pickup is destroyed
     public removeFromCollectedPickups(pickup: Pickup): void {
         this.collectedPickups.delete(pickup);
@@ -976,7 +1814,9 @@ export class Game extends Scene {
         );
     }
 
-    destroy() {
+    // Invoked on the Phaser SHUTDOWN event (wired in create()). Guarded throughout
+    // so it is safe even if shutdown happens before every system is initialized.
+    private shutdownScene() {
         // Clean up UI Effects
         if (this.uiEffects) {
             this.uiEffects.destroy();
@@ -991,13 +1831,46 @@ export class Game extends Scene {
         this.sound.stopAll();
 
         // Clean up systems
-        this.enemySpawnSystem.destroy();
-        this.weaponSystem.destroy();
-        this.gameUI.destroy();
+        // Tear extraction down FIRST: its destroy() calls endExtractionSpawning()
+        // which re-arms the normal spawn timers, so it must run before
+        // enemySpawnSystem.destroy() finally kills them (else they'd leak).
+        this.extractionSystem?.destroy();
+        this.enemySpawnSystem?.destroy();
+        this.weaponSystem?.destroy();
+        this.missionSystem?.destroy();
+        this.gameUI?.destroy();
 
-        // Removed debug cleanup
-
-        // Remove all event listeners
-        this.events.removeAllListeners();
+        // Remove only this game's custom event listeners. We must NOT call
+        // this.events.removeAllListeners() here: this.events is the scene's
+        // *system* emitter, which also carries Phaser's internal plugin
+        // listeners (CameraManager/ArcadePhysics/Input subscribe to START on it).
+        // Wiping all of them means cameras.main and physics.world are never
+        // rebuilt on the next scene.start(), crashing create() (e.g. the
+        // startFollow() TypeError). Remove our events by name instead.
+        for (const evt of Game.CUSTOM_EVENTS) {
+            this.events.removeAllListeners(evt);
+        }
     }
+
+    // Custom game events this scene wires up in create(); removed individually
+    // on shutdown so Phaser's own system listeners survive a restart.
+    private static readonly CUSTOM_EVENTS = [
+        'mission_complete',
+        'extraction_started',
+        'extraction_complete',
+        'enemyKilled',
+        'enemyKilledClassified',
+        'player_level_up',
+        'player_hit',
+        'pickupCreated',
+        'pickupCollected',
+        'elite_spawned',
+        'elites_group_spawned',
+        'elite_died',
+        'boss_spawned',
+        'boss_died',
+        'difficulty_increased',
+        'spawn_state_changed',
+        'weapon_evolved',
+    ];
 }

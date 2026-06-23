@@ -4,6 +4,8 @@ import { Upgrade, UpgradeStats, UpgradeId } from "../types/GameTypes";
 import { GameConstants } from "../config/GameConstants";
 import { Game } from "./Game";
 import { SceneKey } from "../config/SceneKeys";
+import { SkillSystem } from "../systems/SkillSystem";
+import { getWeaponDef } from "../weapons/WeaponCatalog";
 
 export class LevelUpSelection extends Scene {
     private background: GameObjects.Rectangle;
@@ -34,7 +36,11 @@ export class LevelUpSelection extends Scene {
     }
 
     private createUI(upgrades: Upgrade[]): void {
-        // Create semi-transparent background
+        const cx = this.cameras.main.width / 2;
+        const isMobile = this.cameras.main.width < 768;
+
+        // Dimmed backdrop — slightly stronger than before so any residual
+        // celebration FX underneath can't bleed through the menu.
         this.background = this.add
             .rectangle(
                 0,
@@ -42,133 +48,191 @@ export class LevelUpSelection extends Scene {
                 this.cameras.main.width,
                 this.cameras.main.height,
                 0x000000,
-                0.8
+                0.9
             )
             .setOrigin(0, 0)
             .setDepth(1000)
             .setScrollFactor(0);
 
-        // Create title
-        const isMobile = this.cameras.main.width < 768;
-        const titleY = isMobile ? 50 : 100;
+        // --- Header: one title, one subtitle, cleanly stacked (no overlap) ---
+        const titleY = isMobile ? 40 : 64;
         this.title = this.add
-            .text(this.cameras.main.width / 2, titleY, "LEVEL UP!", {
+            .text(cx, titleY, "LEVEL UP!", {
                 fontFamily: "Arial Black",
-                fontSize: "36px",
-                color: "#ffff00",
+                fontSize: isMobile ? "30px" : "40px",
+                color: "#ffd34d",
                 stroke: "#000000",
                 strokeThickness: 6,
             })
             .setOrigin(0.5)
             .setDepth(1001)
             .setScrollFactor(0);
+        if (this.title.preFX) {
+            this.title.preFX.addGlow(0xffd34d, 4, 0, false, 0.1, 12);
+        }
 
-        // Create subtitle
         this.add
-            .text(this.cameras.main.width / 2, 100, "Choose an upgrade:", {
+            .text(cx, titleY + (isMobile ? 26 : 36), "Choose an upgrade", {
                 fontFamily: "Arial",
-                fontSize: "24px",
-                color: "#ffffff",
+                fontSize: isMobile ? "16px" : "20px",
+                color: "#cfcfcf",
                 stroke: "#000000",
-                strokeThickness: 4,
+                strokeThickness: 3,
             })
             .setOrigin(0.5)
             .setDepth(1001)
             .setScrollFactor(0);
 
-        // Create upgrade options
-        const optionWidth = isMobile ? this.cameras.main.width : 300;
-        const optionHeight = isMobile ? 180 : 200;
-        const spacing = isMobile ? 20 : 50;
-        const startX = isMobile
-            ? 0
-            : (this.cameras.main.width - (optionWidth * 3 + spacing * 2)) / 2;
-        const startY = isMobile ? 150 : 250;
+        // --- Cards ---
+        const optionWidth = isMobile
+            ? Math.min(this.cameras.main.width - 32, 360)
+            : 300;
+        const optionHeight = isMobile ? 170 : 210;
+        const spacing = isMobile ? 16 : 40;
+        const pad = 16;
+        const hw = optionWidth / 2;
+        const hh = optionHeight / 2;
+
+        // Card centres (origin-at-centre so hover/select can scale cleanly).
+        const desktopRowX =
+            (this.cameras.main.width - (optionWidth * 3 + spacing * 2)) / 2 + hw;
+        const desktopRowY = this.cameras.main.height / 2 + 16;
+        const mobileStackH =
+            optionHeight * upgrades.length + spacing * (upgrades.length - 1);
+        const mobileTop =
+            Math.max(110, (this.cameras.main.height - mobileStackH) / 2) + hh;
 
         upgrades.forEach((upgrade, index) => {
-            const x = isMobile
-                ? startX
-                : startX + (optionWidth + spacing) * index;
-            const y = isMobile
-                ? startY + (optionHeight + spacing) * index
-                : startY;
+            const cardCX = isMobile
+                ? cx
+                : desktopRowX + (optionWidth + spacing) * index;
+            const cardCY = isMobile
+                ? mobileTop + (optionHeight + spacing) * index
+                : desktopRowY;
+            const baseY = cardCY;
 
-            // Create container for the upgrade option
-            const container = this.add.container(x, y);
-            container.setDepth(1001);
-            container.setScrollFactor(0);
+            const rarity = this.getRarity(upgrade);
+            const displayName = upgrade.name
+                .replace(/\s*\[(common|rare|epic|legendary)\]/i, "")
+                .trim();
 
-            // Create background for the option
-            const optionBg = this.add
-                .rectangle(
-                    optionWidth / 2,
-                    optionHeight / 2,
-                    optionWidth,
-                    optionHeight,
-                    0x333333
-                )
-                .setStrokeStyle(2, 0xffff00)
-                .setInteractive({ useHandCursor: true })
-                .setSize(optionWidth, optionHeight)
-                .on("pointerover", () => {
-                    if (!this.isSelectionMade) {
-                        optionBg.setStrokeStyle(3, 0xffffff);
-                    }
-                })
-                .on("pointerout", () => {
-                    if (!this.isSelectionMade) {
-                        optionBg.setStrokeStyle(2, 0xffff00);
-                    }
-                })
-                .on("pointerdown", () => {
-                    if (!this.isSelectionMade) {
-                        this.selectUpgrade(upgrade);
-                    } else {
-                        console.log("Selection already made, ignoring click");
-                    }
-                });
+            const container = this.add
+                .container(cardCX, cardCY)
+                .setDepth(1001)
+                .setScrollFactor(0);
 
-            // Icon (if available)
+            // Soft rarity glow behind the card
+            const glow = this.add.graphics();
+            glow.fillStyle(rarity.color, 0.1);
+            glow.fillRoundedRect(-hw - 5, -hh - 5, optionWidth + 10, optionHeight + 10, 18);
+
+            // Card body + framed icon chip + rarity divider
+            const chip = 46;
+            const chipCX = -hw + pad + chip / 2;
+            const chipCY = -hh + pad + chip / 2;
+            const dividerY = -hh + pad + chip + 14;
+            const body = this.add.graphics();
+            body.fillStyle(0x1c1c22, 0.98);
+            body.fillRoundedRect(-hw, -hh, optionWidth, optionHeight, 14);
+            body.fillStyle(rarity.color, 0.16);
+            body.fillRoundedRect(chipCX - chip / 2, chipCY - chip / 2, chip, chip, 10);
+            body.lineStyle(2, rarity.color, 0.9);
+            body.strokeRoundedRect(chipCX - chip / 2, chipCY - chip / 2, chip, chip, 10);
+            body.fillStyle(rarity.color, 0.5);
+            body.fillRect(-hw + pad, dividerY, optionWidth - pad * 2, 2);
+
+            // Redrawable border (rarity → white on hover → green on select)
+            const border = this.add.graphics();
+            const drawBorder = (color: number, thickness: number) => {
+                border.clear();
+                border.lineStyle(thickness, color, 1);
+                border.strokeRoundedRect(-hw, -hh, optionWidth, optionHeight, 14);
+            };
+            drawBorder(rarity.color, 2);
+
+            // Icon image seated inside the chip (never overlaps the name)
             const iconKey = this.getIconKeyForUpgrade(upgrade);
             let icon: GameObjects.Image | null = null;
-            const iconX = isMobile ? 40 : 40;
-            const iconY = 40;
             if (iconKey && this.textures.exists(iconKey)) {
-                icon = this.add.image(iconX, iconY, iconKey).setOrigin(0.5).setDisplaySize(48, 48);
+                icon = this.add
+                    .image(chipCX, chipCY, iconKey)
+                    .setOrigin(0.5)
+                    .setDisplaySize(30, 30);
             }
 
-            // Create title for the option
-            const rarityColor = this.getRarityColorFromName(upgrade.name);
-            const title = this.add
-                .text(optionWidth / 2, 30, upgrade.name, {
-                    fontFamily: "Arial",
-                    fontSize: isMobile ? "20px" : "24px",
+            // Name — left-aligned beside the chip, wraps to its own column
+            const nameX = chipCX + chip / 2 + 12;
+            const name = this.add
+                .text(nameX, chipCY, displayName, {
+                    fontFamily: "Arial Black",
+                    fontSize: isMobile ? "18px" : "20px",
                     color: "#ffffff",
                     stroke: "#000000",
-                    strokeThickness: 4,
-                    align: "center",
+                    strokeThickness: 3,
+                    wordWrap: { width: hw - pad - nameX },
+                    lineSpacing: 2,
                 })
-                .setOrigin(0.5);
+                .setOrigin(0, 0.5);
 
-            // Rarity underline
-            const underline = this.add.rectangle(optionWidth / 2, 50, optionWidth * 0.6, 2, rarityColor).setOrigin(0.5);
+            // Rarity caption under the divider
+            const caption = this.add
+                .text(-hw + pad, dividerY + 16, rarity.label, {
+                    fontFamily: "Arial",
+                    fontSize: "12px",
+                    color: this.toHex(rarity.color),
+                    fontStyle: "bold",
+                })
+                .setOrigin(0, 0.5);
 
-            // Get current stats for before/after comparison
-            const currentStats = this.getCurrentStats();
-            const afterStats = this.getAfterStats(upgrade);
+            // Description — centre-anchored in the lower half so 1-line and
+            // multi-line entries both read consistently (no cramped wrap).
+            const descCenterY = (dividerY + 24 + (hh - pad)) / 2;
+            const description = this.add
+                .text(0, descCenterY, this.buildDescription(upgrade), {
+                    fontFamily: "Arial",
+                    fontSize: isMobile ? "15px" : "17px",
+                    color: "#e6e6e6",
+                    align: "center",
+                    wordWrap: { width: optionWidth - pad * 2 - 4 },
+                    lineSpacing: 4,
+                })
+                .setOrigin(0.5, 0.5);
 
-            // Create description with before/after values
-            const description = this.createUpgradeDescription(
-                upgrade,
-                currentStats,
-                afterStats,
-                isMobile,
-                optionWidth
-            );
+            // Transparent hit zone on top captures all input for the card
+            const hit = this.add
+                .rectangle(0, 0, optionWidth, optionHeight, 0x000000, 0)
+                .setInteractive({ useHandCursor: true })
+                .on("pointerover", () => {
+                    if (this.isSelectionMade) return;
+                    drawBorder(0xffffff, 3);
+                    this.tweens.add({
+                        targets: container,
+                        scaleX: 1.04,
+                        scaleY: 1.04,
+                        y: baseY - 6,
+                        duration: 120,
+                        ease: "Quad.easeOut",
+                    });
+                })
+                .on("pointerout", () => {
+                    if (this.isSelectionMade) return;
+                    drawBorder(rarity.color, 2);
+                    this.tweens.add({
+                        targets: container,
+                        scaleX: 1,
+                        scaleY: 1,
+                        y: baseY,
+                        duration: 120,
+                        ease: "Quad.easeOut",
+                    });
+                })
+                .on("pointerdown", () => {
+                    if (this.isSelectionMade) return;
+                    this.selectUpgrade(upgrade, { container, drawBorder, baseY });
+                });
 
-            // Add all elements to the container
-            const toAdd: GameObjects.GameObject[] = [optionBg, title, underline, description];
-            if (icon) toAdd.push(icon);
+            const toAdd = [glow, body, border, icon, name, caption, description, hit]
+                .filter(Boolean) as GameObjects.GameObject[];
             container.add(toAdd);
             this.upgradeOptions.push(container);
         });
@@ -229,50 +293,59 @@ export class LevelUpSelection extends Scene {
         return afterStats;
     }
 
-    private createUpgradeDescription(
-        upgrade: Upgrade,
-        currentStats: UpgradeStats,
-        afterStats: UpgradeStats,
-        isMobile: boolean,
-        optionWidth: number
-    ): GameObjects.Text {
-        let description = "";
+    /** Build the effect-summary string for a card. Base stats render a concrete
+     *  before → after; weapons/relics fall back to their catalog wording. */
+    private buildDescription(upgrade: Upgrade): string {
+        const currentStats = this.getCurrentStats();
+        const afterStats = this.getAfterStats(upgrade);
 
         switch (upgrade.id) {
             case UpgradeId.HEALTH_BOOST:
-                description = `Health: ${Math.round(currentStats.health)} → ${Math.round(afterStats.health)}`;
-                break;
+                return `Health  ${Math.round(currentStats.health)} → ${Math.round(afterStats.health)}`;
             case UpgradeId.SPEED_BOOST:
-                description = `Speed: ${Math.round(currentStats.speed)} → ${Math.round(afterStats.speed)}`;
-                break;
+                return `Speed  ${Math.round(currentStats.speed)} → ${Math.round(afterStats.speed)}`;
             case UpgradeId.WEAPON_DAMAGE:
-                description = `Damage: ${Math.round(currentStats.weaponDamage)} → ${Math.round(afterStats.weaponDamage)}`;
-                break;
+                return `Damage  ${Math.round(currentStats.weaponDamage)} → ${Math.round(afterStats.weaponDamage)}`;
             case UpgradeId.WEAPON_SPEED:
-                description = `Attack Speed: ${Math.round(currentStats.weaponSpeed)} → ${Math.round(afterStats.weaponSpeed)}`;
-                break;
+                return `Attack Speed  ${Math.round(currentStats.weaponSpeed)} → ${Math.round(afterStats.weaponSpeed)}`;
             case UpgradeId.PROJECTILE_SPEED:
-                description = `Projectile Speed: ${Math.round(currentStats.projectileSpeed)} → ${Math.round(afterStats.projectileSpeed)}`;
-                break;
+                return `Projectile Speed  ${Math.round(currentStats.projectileSpeed)} → ${Math.round(afterStats.projectileSpeed)}`;
             case UpgradeId.HEALTH_REGEN:
-                description = "Regenerate 1% of max health every 5 seconds";
-                break;
+                return "Regenerate 1% of max health every 5 seconds";
+            case UpgradeId.SKILL_MASTERY:
+                return this.getSkillMasteryDescription();
             default:
-                description = upgrade.description;
+                return this.getWeaponDescription(upgrade) ?? upgrade.description;
         }
+    }
 
-        // Create the text object with the description
-        return this.add
-            .text(optionWidth / 2, 80, description, {
-                fontFamily: "Arial",
-                fontSize: isMobile ? "16px" : "18px",
-                color: "#ffffff",
-                stroke: "#000000",
-                strokeThickness: 3,
-                align: "center",
-                wordWrap: { width: optionWidth - 20 },
-            })
-            .setOrigin(0.5);
+    private getSkillMasteryDescription(): string {
+        const gameScene = this.scene.manager.getScene(SceneKey.Game) as Game | undefined;
+        const skillSystem = gameScene?.getSkillSystem?.();
+        if (!skillSystem) {
+            return "Reduce defensive skill cooldown";
+        }
+        const currentMs = skillSystem.getCooldownTotalMs();
+        // Mirror SkillSystem.levelUp() to preview the next level's cooldown.
+        const nextLevel = Math.min(SkillSystem.MAX_LEVEL, skillSystem.getLevel() + 1);
+        const nextMs = Math.max(400, 1200 - (nextLevel - 1) * 150);
+        const currentSecs = (currentMs / 1000).toFixed(1);
+        const nextSecs = (nextMs / 1000).toFixed(1);
+        return `Skill Cooldown: ${currentSecs}s → ${nextSecs}s`;
+    }
+
+    /** For catalog-weapon offers, append the level transition and concrete deltas
+     *  this pick will apply. Owned weapons read their live level + per-weapon deltas
+     *  ("Lv N → N+1" / "Dmg +15% · Chains +1"); a first-time pick reads "New weapon".
+     *  Returns null for non-weapon upgrades (relics/base stats). */
+    private getWeaponDescription(upgrade: Upgrade): string | null {
+        const def = getWeaponDef(upgrade.id);
+        if (!def) return null;
+        const gameScene = this.scene.manager.getScene(SceneKey.Game) as Game | undefined;
+        const info = gameScene?.getWeaponSystem?.()?.getWeaponUpgradeInfo(upgrade.id) ?? null;
+        if (!info) return `${upgrade.description}\nNew weapon`;
+        const deltas = info.preview ? `\n${info.preview}` : '';
+        return `${upgrade.description}\nLv ${info.level} → ${info.level + 1}${deltas}`;
     }
 
     private getIconKeyForUpgrade(upgrade: Upgrade): string | null {
@@ -280,9 +353,11 @@ export class LevelUpSelection extends Scene {
         if (upgrade.id.startsWith('relic_')) {
             return upgrade.id; // expects keys like 'relic_greed'
         }
+        // Catalog weapons resolve their icon from the registry (single source of
+        // truth) — covers piercing/explosive/orbital plus all new weapons.
+        const def = getWeaponDef(upgrade.id);
+        if (def) return def.iconKey;
         switch (upgrade.id) {
-            case 'piercing_shot': return 'upgrade_piercing';
-            case 'explosive_burst': return 'upgrade_explosive';
             case 'projectile_speed': return 'upgrade_projectile';
             case 'weapon_damage': return 'upgrade_weapon_damage';
             case 'weapon_speed': return 'upgrade_weapon_speed';
@@ -292,40 +367,64 @@ export class LevelUpSelection extends Scene {
         }
     }
 
-    private getRarityColorFromName(name: string): number {
-        // Expect format: Name [rarity]
-        const m = name.match(/\[(common|rare|epic|legendary)\]/i);
-        const r = m ? m[1].toLowerCase() : '';
-        switch (r) {
-            case 'common': return 0xcccccc;
-            case 'rare': return 0x4da6ff;
-            case 'epic': return 0xbf5af2;
-            case 'legendary': return 0xffc107;
-            default: return 0xffffff;
+    /** Resolve a display rarity (colour + label) for any offer. Relics embed
+     *  "[rarity]" in their name; weapons read as RARE; base stats as COMMON.
+     *  Drives the card border, glow, divider, chip frame, and caption. */
+    private getRarity(upgrade: Upgrade): { color: number; label: string } {
+        const m = upgrade.name.match(/\[(common|rare|epic|legendary)\]/i);
+        const key = m
+            ? m[1].toLowerCase()
+            : getWeaponDef(upgrade.id)
+              ? 'rare'
+              : 'common';
+        switch (key) {
+            case 'legendary': return { color: 0xffc107, label: 'LEGENDARY' };
+            case 'epic': return { color: 0xbf5af2, label: 'EPIC' };
+            case 'rare': return { color: 0x4da6ff, label: 'RARE' };
+            default: return { color: 0xcccccc, label: 'COMMON' };
         }
     }
 
-    private selectUpgrade(upgrade: Upgrade): void {
+    private toHex(color: number): string {
+        return '#' + color.toString(16).padStart(6, '0');
+    }
+
+    private selectUpgrade(
+        upgrade: Upgrade,
+        card?: {
+            container: GameObjects.Container;
+            drawBorder: (color: number, thickness: number) => void;
+            baseY: number;
+        }
+    ): void {
         this.isSelectionMade = true;
         this.selectedUpgrade = upgrade;
 
-        // Highlight the selected option
-        const selectedIndex = this.upgradeOptions.findIndex((container) => {
-            const bg = container.getAt(0) as GameObjects.Rectangle;
-            return (
-                bg && bg.input && bg.input.hitAreaCallback(bg.input.hitArea, 0, 0, bg)
-            );
-        });
-
-
-        if (selectedIndex !== -1) {
-            const selectedContainer = this.upgradeOptions[selectedIndex];
-            const selectedBg = selectedContainer.getAt(
-                0
-            ) as GameObjects.Rectangle;
-            selectedBg.setStrokeStyle(4, 0x00ff00);
+        if (card) {
+            // Confirm the pick: green border, dim the others for focus, and a
+            // quick pulse before applying the effect and resuming.
+            card.drawBorder(0x00ff66, 4);
+            this.upgradeOptions.forEach((c) => {
+                if (c !== card.container) {
+                    this.tweens.add({ targets: c, alpha: 0.35, duration: 140 });
+                }
+            });
+            this.tweens.add({
+                targets: card.container,
+                scaleX: 1.1,
+                scaleY: 1.1,
+                y: card.baseY - 8,
+                duration: 90,
+                yoyo: true,
+                ease: "Quad.easeOut",
+                onComplete: () => this.applyAndResume(upgrade),
+            });
+        } else {
+            this.applyAndResume(upgrade);
         }
+    }
 
+    private applyAndResume(upgrade: Upgrade): void {
         // Apply the upgrade (guard if player died or scene was torn down)
         try {
             if (this.player && this.player.scene && this.player.active) {

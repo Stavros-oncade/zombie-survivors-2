@@ -3,6 +3,8 @@ import { DefensiveSkillId, GasCloudTag } from '../types/GameTypes';
 import { Player } from '../entities/Player';
 
 export class SkillSystem {
+  public static readonly MAX_LEVEL = 5;
+
   private game: Game;
   private skill: DefensiveSkillId;
   private level = 1;
@@ -15,7 +17,11 @@ export class SkillSystem {
     this.skill = skill;
   }
 
-  public levelUp() { this.level = Math.min(5, this.level + 1); }
+  public levelUp() { this.level = Math.min(SkillSystem.MAX_LEVEL, this.level + 1); }
+
+  public getLevel(): number { return this.level; }
+
+  public isMaxLevel(): boolean { return this.level >= SkillSystem.MAX_LEVEL; }
 
   public getCooldownTotalMs(): number {
     return Math.max(400, this.cooldownMs - (this.level - 1) * 150);

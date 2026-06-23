@@ -5,6 +5,8 @@ import { trackEvent } from '../../oncade/OncadeIntegration';
 import { Game } from '../scenes/Game';
 import { SceneKey } from '../config/SceneKeys';
 import { Enemy } from './Enemy';
+import { ReconSystem } from '../systems/ReconSystem';
+import { readMovementDirection } from '../utils/MovementInput';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
     private health: number;
@@ -21,6 +23,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     private lastDamageSource: Enemy | null = null;
     private immunityTimer: Phaser.Time.TimerEvent | null = null;
     private readonly IMMUNITY_DURATION: number = 100; // 100ms immunity
+    private isDead: boolean = false;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, 'player');
@@ -126,14 +129,37 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.xpGained += amount;
     }
 
+    public getIsDead(): boolean {
+        return this.isDead;
+    }
+
+    public getEnemiesKilled(): number {
+        return this.enemiesKilled;
+    }
+
+    public getXPGained(): number {
+        return this.xpGained;
+    }
+
     private die(): void {
+        // Guard against re-entry (e.g. multiple damage sources resolving in the
+        // same frame) so we only ever transition to GameOver once.
+        if (this.isDead) {
+            return;
+        }
+        this.isDead = true;
+
         console.log("Player Died. Stats:", this.getStats());
-        
+
+        // Mark the player inactive so any in-flight upgrade effects / level-up
+        // triggers that check `active` no-op instead of mutating a dead player.
+        this.setActive(false);
+
         // Get play time from the GameUI instead of the Game scene
         const gameScene = this.scene.scene.get(SceneKey.Game) as Game;
         const gameUI = gameScene ? gameScene.getGameUI() : null;
         const playTime = gameUI ? gameUI.getGameTime() : 0;
-        
+
         // Track player death event
         trackEvent('player_died', {
             enemiesKilled: this.enemiesKilled,
@@ -141,9 +167,62 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             levelReached: this.experienceSystem.getCurrentLevel(),
             playTimeSeconds: playTime
         });
-        
-        this.scene.scene.start(SceneKey.GameOver, { 
-            enemiesKilled: this.enemiesKilled, 
+
+        // Dismiss any overlay scenes that are running on top of the Game scene.
+        // If the player dies at (or just before) the moment a level-up upgrade
+        // selection is shown, that overlay is a separate, independently-running
+        // scene and would otherwise linger on top of GameOver, soft-locking the
+        // game. Stop it (and the pause overlay) before transitioning.
+        const sceneManager = this.scene.scene;
+        if (sceneManager.isActive(SceneKey.LevelUpSelection)) {
+            sceneManager.stop(SceneKey.LevelUpSelection);
+        }
+        if (sceneManager.isActive(SceneKey.PauseMenu)) {
+            sceneManager.stop(SceneKey.PauseMenu);
+        }
+        // Un-pause before stopping the Game scene: a scene stopped while paused
+        // leaves Arcade physics unable to re-boot (physics.world === null) on the
+        // next run's create(). resume() on a non-paused scene is a no-op.
+        sceneManager.resume();
+
+        // Surface the failed objective on the lose screen.
+        const missionName = gameScene?.getMissionSystem?.()?.getMission().name;
+        const missionId = gameScene?.getActiveMissionId?.();
+        const runId = gameScene?.getRunId?.();
+
+        // Resolve assigned-survivor injury/death under the Game's runEnded latch so
+        // it settles exactly once (mirrors the win/timeout terminus paths).
+        const survivorOutcomes = gameScene?.resolveSurvivorsForDeath?.() ?? [];
+
+        // Long Recon (§5.5): death anywhere FAILS the whole expedition. Forfeit the
+        // staked pending rewards to a salvage floor, clear run-state, and route to the
+        // recon-failed GameOver presentation instead of the standalone lose payload.
+        const recon = ReconSystem.getInstance();
+        if (recon.isActive()) {
+            const payout = recon.failRecon();
+            sceneManager.start(SceneKey.GameOver, {
+                outcome: 'lose',
+                missionName,
+                missionId,
+                runId,
+                survivorOutcomes,
+                reconFailed: true,
+                reconPayout: payout,
+                enemiesKilled: this.enemiesKilled,
+                xpGained: this.xpGained,
+                levelReached: this.experienceSystem.getCurrentLevel(),
+                playTimeSeconds: playTime
+            });
+            return;
+        }
+
+        sceneManager.start(SceneKey.GameOver, {
+            outcome: 'lose',
+            missionName,
+            missionId,
+            runId,
+            survivorOutcomes,
+            enemiesKilled: this.enemiesKilled,
             xpGained: this.xpGained,
             levelReached: this.experienceSystem.getCurrentLevel(),
             playTimeSeconds: playTime
@@ -165,55 +244,30 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         initialTouchPoint?: Phaser.Math.Vector2 | null,
         currentTouchPoint?: Phaser.Math.Vector2 | null
     ): void {
-        const direction = new Phaser.Math.Vector2(0, 0);
-
-        // Handle keyboard input
-        if (cursors.left && cursors.left.isDown) {
-            direction.x = -1;
-        } else if (cursors.right && cursors.right.isDown) {
-            direction.x = 1;
-        }
-        if (cursors.up && cursors.up.isDown) {
-            direction.y = -1;
-        } else if (cursors.down && cursors.down.isDown) {
-            direction.y = 1;
-        }
-
-        if (wasdKeys) {
-            if (wasdKeys.left && wasdKeys.left.isDown) {
-                direction.x = -1;
-            } else if (wasdKeys.right && wasdKeys.right.isDown) {
-                direction.x = 1;
-            }
-            if (wasdKeys.up && wasdKeys.up.isDown) {
-                direction.y = -1;
-            } else if (wasdKeys.down && wasdKeys.down.isDown) {
-                direction.y = 1;
-            }
-        }
-
-        // Handle touch input (virtual joystick)
-        if (initialTouchPoint && currentTouchPoint) {
-            // Calculate the vector from initial touch to current touch
-            const touchDirection = new Phaser.Math.Vector2(
-                currentTouchPoint.x - initialTouchPoint.x,
-                currentTouchPoint.y - initialTouchPoint.y
-            );
-
-            // Normalize the vector to get direction
-            touchDirection.normalize();
-
-            // Add the touch direction to the movement direction
-            direction.add(touchDirection);
-        }
-
-        direction.normalize();
+        // Movement intent is read by the shared MovementInput helper so the combat
+        // Player and the camp CampPlayer stay in lockstep (no control drift).
+        const direction = readMovementDirection(cursors, wasdKeys, initialTouchPoint, currentTouchPoint);
         this.move(direction);
     }
 
     public setMaxHealth(newMaxHealth: number): void {
         this.maxHealth = newMaxHealth;
         this.stats.maxHealth = newMaxHealth;
+    }
+
+    /** Current HP (Long Recon carry-state snapshot, §5.4). */
+    public getCurrentHealth(): number {
+        return this.health;
+    }
+
+    /**
+     * Overwrite current HP to an absolute value (clamped to [1, maxHealth]). Used by
+     * the Long Recon to carry damage between nodes (§5.3); never sets 0 (that would
+     * trigger death on a fresh node), and never exceeds maxHealth.
+     */
+    public setHealthAbsolute(value: number): void {
+        this.health = Math.max(1, Math.min(this.maxHealth, Math.floor(value)));
+        this.stats.health = this.health;
     }
 
     public heal(amount: number): void {

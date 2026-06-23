@@ -66,4 +66,34 @@ export class ExperienceSystem {
     public getCurrentExperience(): number {
         return this.currentExperience;
     }
+
+    /**
+     * Total XP accumulated across all levels (banked XP for the Long Recon carry-
+     * state, §5). Re-derives the requirement for each completed level so it round-
+     * trips with restore(level, totalXP).
+     */
+    public getTotalXP(): number {
+        let total = this.currentExperience;
+        const saved = this.currentLevel;
+        for (let lvl = 1; lvl < saved; lvl++) {
+            total += Math.floor(GameConstants.EXPERIENCE.BASE_XP_REQUIREMENT *
+                Math.pow(GameConstants.EXPERIENCE.XP_SCALING_FACTOR, lvl - 1));
+        }
+        return total;
+    }
+
+    /**
+     * Restore a saved level + total-XP snapshot WITHOUT re-firing level-up events
+     * (used by the Long Recon when re-applying carry-state at a node start, §5.3).
+     * Sets currentLevel/currentExperience directly so no new level-up UI pops.
+     */
+    public restore(level: number, totalXP: number): void {
+        this.currentLevel = Math.max(1, Math.floor(level));
+        let remaining = Math.max(0, Math.floor(totalXP));
+        for (let lvl = 1; lvl < this.currentLevel; lvl++) {
+            remaining -= Math.floor(GameConstants.EXPERIENCE.BASE_XP_REQUIREMENT *
+                Math.pow(GameConstants.EXPERIENCE.XP_SCALING_FACTOR, lvl - 1));
+        }
+        this.currentExperience = Math.max(0, remaining);
+    }
 } 

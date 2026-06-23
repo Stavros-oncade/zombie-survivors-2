@@ -51,8 +51,9 @@ export class ExplosiveWeapon implements IWeapon {
       } else {
         const g = scene.add.graphics();
         g.setScrollFactor(1);
+        g.setPosition(px, py);
         g.fillStyle(0xffaa00, 0.25);
-        g.fillCircle(px, py, this.range);
+        g.fillCircle(0, 0, this.range);
         scene.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() });
       }
     }
@@ -63,6 +64,11 @@ export class ExplosiveWeapon implements IWeapon {
     this.damage *= 1.15;
     this.attackSpeed *= 1.1;
     this.range += 10;
+  }
+
+  // Mirrors upgrade(): keep in sync if the deltas above change.
+  public getUpgradePreview(): string {
+    return 'Dmg +15% · Speed +10% · Range +10';
   }
 
   public upgradeDamage(multiplier: number): void { this.damage *= multiplier; }

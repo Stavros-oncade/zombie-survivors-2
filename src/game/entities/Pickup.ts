@@ -27,6 +27,9 @@ export class Pickup extends Phaser.Physics.Arcade.Sprite {
                 return 'pickup_xp';
             case PickupType.BOMB:
                 return 'pickup_bomb';
+            case PickupType.AIRSTRIKE:
+                // Reuse the bomb texture; a distinct tint is applied in initialize()
+                return 'pickup_bomb';
             default:
                 return 'pickup_health';
         }
@@ -55,6 +58,10 @@ export class Pickup extends Phaser.Physics.Arcade.Sprite {
                 break;
             case PickupType.BOMB:
                 this.value = 10; // 10x weapon damage multiplier
+                break;
+            case PickupType.AIRSTRIKE:
+                this.value = 0; // Effect is handled directly by the airstrike sequence
+                this.setTint(0x66ccff); // Distinctive light-blue tint
                 break;
         }
 
