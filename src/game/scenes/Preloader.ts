@@ -55,7 +55,9 @@ export class Preloader extends Scene
         });
 
         // Phase 1: queue manifest only
-        const manifestUrl = import.meta.env.VITE_ASSET_MANIFEST_URL || '/content.manifest.json';
+        // Resolve relative to the deploy base (e.g. GitHub Pages project subpath) rather than
+        // the domain root, otherwise '/content.manifest.json' 404s on stavros-oncade.github.io.
+        const manifestUrl = import.meta.env.VITE_ASSET_MANIFEST_URL || `${import.meta.env.BASE_URL}content.manifest.json`;
         this.load.json('asset_manifest', manifestUrl);
 
         // When the manifest file completes, enqueue its assets into the same load cycle
