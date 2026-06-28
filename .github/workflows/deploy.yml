@@ -20,9 +20,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Build job
+  # Build and deploy job
   build:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,14 +45,7 @@ jobs:
         with:
           # Upload entire repository
           path: './dist'
-      - name: Deploy to GitHub Pages # Renamed step for clarity
+      - name: Deploy to GitHub Pages
         id: deployment # Add id for the deployment step
         uses: actions/deploy-pages@v4 # Use the official deploy action
-        # No need for 'folder' or 'branch' inputs anymore
-        # The action automatically uses the artifact uploaded in the previous step
-
-      - name: Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          folder: dist
-          branch: gh-pages 
+        # The action automatically uses the artifact uploaded in the previous step 
