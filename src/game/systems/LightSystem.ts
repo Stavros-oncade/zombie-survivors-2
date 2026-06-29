@@ -147,10 +147,21 @@ export class LightSystem {
     const lights: LightDef[] = [];
     const m = gen.EDGE_MARGIN;
     const clearR = gen.SPAWN_CLEAR_RADIUS;
+    // Global multiplier on the procedural fill (streetlights + fires) so the map
+    // can be lit more sparsely. The single carryable lantern below is exempt — the
+    // carry/drop mechanic depends on it always being present.
+    const density = gen.DENSITY ?? 1;
 
     // Streetlight spine: a jittered grid, skipping any cell that lands on spawn.
+    // Cells are thinned to DENSITY, kept evenly across the grid (e.g. 0.5 → every
+    // other cell) so the spine still reads as a navigable line, not a clump.
+    let cellIndex = 0;
     for (let row = 0; row < gen.STREET_ROWS; row++) {
       for (let col = 0; col < gen.STREET_COLS; col++) {
+        const keepCell =
+          Math.floor((cellIndex + 1) * density) > Math.floor(cellIndex * density);
+        cellIndex++;
+        if (!keepCell) continue;
         const cx = m + ((col + 0.5) / gen.STREET_COLS) * (worldW - m * 2);
         const cy = m + ((row + 0.5) / gen.STREET_ROWS) * (worldH - m * 2);
         const x = Phaser.Math.Clamp(cx + (Math.random() * 2 - 1) * gen.JITTER, m, worldW - m);
@@ -160,8 +171,9 @@ export class LightSystem {
       }
     }
 
-    // Flickering trashcan fires at random spots away from spawn.
-    for (let i = 0; i < gen.FIRE_COUNT; i++) {
+    // Flickering trashcan fires at random spots away from spawn (also DENSITY-scaled).
+    const fireCount = Math.round(gen.FIRE_COUNT * density);
+    for (let i = 0; i < fireCount; i++) {
       const p = LightSystem.randomAwayFromSpawn(worldW, worldH, m, spawnX, spawnY, clearR);
       lights.push({ kind: 'trashcanFire', x: p.x, y: p.y });
     }

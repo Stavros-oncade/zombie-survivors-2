@@ -352,6 +352,15 @@ export class Game extends Scene {
                 this.enemySpawnSystem.spawnEliteGroup(cond.target);
             });
         }
+        // KILL_TYPE / PURGE_TYPE: guarantee the target enemy type appears at least
+        // once every 2 waves so the objective can't stall when the weighted spawn
+        // table happens to skip it (see EnemySpawnSystem.setGuaranteedType).
+        if (
+            cond.kind === MissionConditionKind.KILL_TYPE ||
+            cond.kind === MissionConditionKind.PURGE_TYPE
+        ) {
+            this.enemySpawnSystem.setGuaranteedType(cond.enemyType);
+        }
         // Brief mission banner at run start.
         this.showMissionBanner();
 

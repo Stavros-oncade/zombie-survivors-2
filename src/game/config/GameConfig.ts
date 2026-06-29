@@ -87,10 +87,13 @@ export const GameConfig = {
         GEN: {
             EDGE_MARGIN: 220,        // keep lights this far inside the world bounds
             SPAWN_CLEAR_RADIUS: 300, // keep the immediate spawn area unlit (tension)
+            DENSITY: 0.5,            // global multiplier on procedural light count
+                                     // (streetlights + fires). 0.5 = half as many
+                                     // spawned lights; the carryable lantern is exempt.
             STREET_COLS: 3,
             STREET_ROWS: 3,
             JITTER: 180,             // per-cell random offset so the grid isn't rigid
-            FIRE_COUNT: 3,           // flickering trashcan fires
+            FIRE_COUNT: 3,           // flickering trashcan fires (before DENSITY)
             CARRYABLE_DIST: 320,     // lantern spawn distance from the player
         },
         // Per-kind base reveal radius (px, before darknessMult), glow tint, glow

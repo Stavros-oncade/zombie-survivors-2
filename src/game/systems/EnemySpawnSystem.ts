@@ -69,6 +69,13 @@ export class EnemySpawnSystem {
     private enemyDamageMult: number = 1;
     private eliteIntervalMult: number = 1;
 
+    // Mission "guaranteed type" (KILL_TYPE / PURGE_TYPE). When set, this enemy type
+    // is force-spawned at any wave boundary where the previous wave produced none of
+    // it, so it appears at least once every 2 waves regardless of the weighted table.
+    private guaranteedType: EnemyType | null = null;
+    private guaranteedSpawnedThisWave: boolean = false;
+    private guaranteedSpawnedPrevWave: boolean = false;
+
     // ── Extraction phase (uncapped directional spawning) ──
     // When active, spawning bypasses getScaledConfig ceilings and a fast fixed
     // loop replaces the normal spawn timer, biased to come mostly from AWAY from
@@ -309,6 +316,32 @@ export class EnemySpawnSystem {
         });
         
         this.applyStateConfig();
+        this.enforceGuaranteedType();
+    }
+
+    /**
+     * Wave-boundary hook for the mission guaranteed type. Called once per wave
+     * (spawn-state) transition. If the wave that just ended produced none of the
+     * guaranteed type, force-spawn one into the new wave — so two consecutive waves
+     * can never pass without the mission's target type appearing.
+     */
+    private enforceGuaranteedType(): void {
+        if (!this.guaranteedType) return;
+        this.guaranteedSpawnedPrevWave = this.guaranteedSpawnedThisWave;
+        this.guaranteedSpawnedThisWave = false;
+        if (this.guaranteedSpawnedPrevWave) return;
+        // Respect the Shrieker concurrency cap: if it's already at the ceiling the
+        // type is plainly on the board, so the guarantee is met without adding another
+        // (whose rally aura would compound). Mark satisfied and skip the force-spawn.
+        if (
+            this.guaranteedType === EnemyType.SHRIEKER &&
+            this.countAliveShriekers() >= EnemySpawnSystem.SHRIEKER_MAX_ALIVE
+        ) {
+            this.guaranteedSpawnedThisWave = true;
+            return;
+        }
+        const { x, y } = this.getRandomSpawnPosition();
+        this.addEnemyOfType(this.guaranteedType, x, y);
     }
 
     // Expose a way to force a given spawn state and emit the banner
@@ -398,7 +431,17 @@ export class EnemySpawnSystem {
     }
 
     private createEnemy(x: number, y: number, cfg: SpawnStateConfig): void {
-        const type = this.getRandomEnemyType(cfg);
+        this.addEnemyOfType(this.getRandomEnemyType(cfg), x, y);
+    }
+
+    /**
+     * Instantiate + register one enemy of an EXPLICIT type. Shared by the normal
+     * weighted-random path (createEnemy) and the mission guaranteed-type path
+     * (enforceGuaranteedType) so both apply the double-speed roll, damage scaling,
+     * and group registration — and so any spawn of the guaranteed type marks it
+     * present for the current wave.
+     */
+    private addEnemyOfType(type: EnemyType, x: number, y: number): void {
         let enemy: Enemy;
         if (type === EnemyType.RANGED) {
             enemy = new RangedEnemy(this.scene, x, y);
@@ -419,6 +462,7 @@ export class EnemySpawnSystem {
         if (this.enemyDamageMult !== 1) enemy.scaleDamage(this.enemyDamageMult);
         this.scene.add.existing(enemy);
         this.enemies.add(enemy);
+        if (type === this.guaranteedType) this.guaranteedSpawnedThisWave = true;
         // console.log(
         //     `[${this.spawnState}] Spawned ${type} @ (${x},${y}) — total: ${this.enemies.getLength()}`
         // );
@@ -500,6 +544,18 @@ export class EnemySpawnSystem {
     public setEliteIntervalMult(mult: number): void {
         this.eliteIntervalMult = Math.max(0.1, mult);
         this.setupEliteTimer();
+    }
+
+    /**
+     * Force a specific enemy type to appear at least once every 2 waves (used for
+     * KILL_TYPE / PURGE_TYPE missions so the objective can't stall when the weighted
+     * spawn table happens to skip the target). Pass null to clear. Enforced at each
+     * wave transition by enforceGuaranteedType().
+     */
+    public setGuaranteedType(type: EnemyType | null): void {
+        this.guaranteedType = type;
+        this.guaranteedSpawnedThisWave = false;
+        this.guaranteedSpawnedPrevWave = false;
     }
 
     /** Count currently-alive Shriekers in the group (enforces the spawn cap). */
