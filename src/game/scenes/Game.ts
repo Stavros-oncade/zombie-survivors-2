@@ -27,11 +27,14 @@ import { KillstreakSystem } from "../systems/KillstreakSystem";
 import { SpawningConfig } from "../systems/SpawningConfig";
 import { BlueprintDrop } from "../entities/BlueprintDrop";
 import { SceneKey } from "../config/SceneKeys";
+import { fadeIn, FADE_NIGHT } from "../utils/transition";
 import { BossEnemy } from "../entities/BossEnemy";
 import { MissionSystem } from "../systems/MissionSystem";
 import { ExtractionSystem } from "../systems/ExtractionSystem";
 import { FogSystem } from "../systems/FogSystem";
 import { LightSystem } from "../systems/LightSystem";
+import { BurnSystem } from "../systems/BurnSystem";
+import { DecalSystem } from "../systems/DecalSystem";
 import { resolveMission } from "../config/Missions";
 import { Mission, MissionConditionKind, WorldPoint } from "../types/MissionTypes";
 import { JobBoardSystem } from "../systems/JobBoardSystem";
@@ -92,6 +95,14 @@ export class Game extends Scene {
     // undefined and the run is byte-for-byte unchanged. Owns the glow entities and
     // registers each as a FogSystem reveal contributor.
     private lightSystem?: LightSystem;
+    // Fire / Burn status (GameConfig.BURN). Always constructed in create(); owns
+    // the burning-zombie DoT, flame overlays, glows + fog contributors, contagion
+    // and the trashcan-barrel ignition. Burning works with or without fog.
+    private burnSystem?: BurnSystem;
+    // Ground decals (GameConfig.DECAL). Always constructed in create(); owns the
+    // charred blast scorches and toxic-death stains. Purely cosmetic — no fog,
+    // physics or damage. Mirrors the BurnSystem lifecycle.
+    private decalSystem?: DecalSystem;
     // Fog modifiers accumulated by the RunModifierSink before the mission/FogSystem
     // is resolved (SCANNER widens reveal, VEIL narrows it + forces fog on).
     private pendingRevealRadiusMult: number = 1;
@@ -122,12 +133,17 @@ export class Game extends Scene {
     // In-run medkit (heal) charges granted by MEDKIT supplies (§8). Bound to Q.
     private medkitCharges: number = 0;
     private medkitKey?: Phaser.Input.Keyboard.Key;
+    // True when entered via the Briefing scene (normal Loadout deploy). Suppresses
+    // the duplicate in-level OBJECTIVE banner and swaps the fade-in for an impact
+    // flash so the run "drops in". Other entries (dev/recon/restart) fade in plain.
+    private briefed: boolean = false;
 
     constructor() {
         super({ key: SceneKey.Game });
     }
 
-    init(data?: { expeditionPlan?: ExpeditionPlan }) {
+    init(data?: { expeditionPlan?: ExpeditionPlan; briefed?: boolean }) {
+        this.briefed = !!data?.briefed;
         // Phaser reuses scene instances across scene.start()/restart(), so class-field
         // initializers only run once (on first construction). Per-run state that other
         // systems read (cumulative run time, the run-ended latch) MUST be reset here or
@@ -168,6 +184,15 @@ export class Game extends Scene {
         // never hard-crash create(). ArcadePhysics.start() only builds world if missing.
         if (!this.physics.world) {
             (this.physics as unknown as { start: () => void }).start();
+        }
+
+        // Arrival transition. A deploy from the Briefing scene "drops in" with a
+        // white impact flash (the Briefing already faded to night); every other
+        // entry (dev SpawnTuner, recon node, restart) fades up from night instead.
+        if (this.briefed) {
+            this.cameras.main.flash(180, 255, 255, 255);
+        } else {
+            fadeIn(this, { color: FADE_NIGHT });
         }
 
         // Set the physics world bounds to be larger than the viewport
@@ -336,6 +361,13 @@ export class Game extends Scene {
         );
         const missionLights = this.activeMission.lights ?? [];
         this.lightSystem = new LightSystem(this, [...generatedLights, ...missionLights], this.fogSystem);
+        // Fire / Burn status (GameConfig.BURN). Always built — burning zombies take
+        // DoT, wear a flame overlay, and (where fog is on) light themselves out of
+        // the shroud. Takes the fog (for reveal contributors) and the light system
+        // (to read the burning trashcan-barrel positions for ignition).
+        this.burnSystem = new BurnSystem(this, this.fogSystem, this.lightSystem);
+        // Ground decals (blast scorches + toxic-death stains). Cosmetic only.
+        this.decalSystem = new DecalSystem(this);
         // SLAY_BOSS may request an early boss spawn for a "boss rush" variant.
         const cond = this.activeMission.condition;
         if (cond.kind === MissionConditionKind.SLAY_BOSS && cond.forceEarlySpawnAtSeconds !== undefined) {
@@ -361,8 +393,9 @@ export class Game extends Scene {
         ) {
             this.enemySpawnSystem.setGuaranteedType(cond.enemyType);
         }
-        // Brief mission banner at run start.
-        this.showMissionBanner();
+        // Brief mission banner at run start — unless the Briefing scene already
+        // front-loaded the objective (briefed deploy), in which case it's redundant.
+        if (!this.briefed) this.showMissionBanner();
 
         // Apply spawning tuner options at start — schedule after a short delay
         const sc = SpawningConfig.getInstance();
@@ -839,6 +872,14 @@ export class Game extends Scene {
         // BEFORE the fog so the contributors they own are current this frame.
         this.lightSystem?.update(this.game.loop.delta);
 
+        // Advance burning zombies (DoT ticks, flame/glow flicker, contagion +
+        // barrel ignition, prune/expire) BEFORE the fog so any contributor a fire
+        // adds or removes this frame resolves before the shroud is re-drawn.
+        this.burnSystem?.update(this.game.loop.delta);
+
+        // Fade/prune ground decals. Cosmetic-only; order vs fog is irrelevant.
+        this.decalSystem?.update(this.game.loop.delta);
+
         // Advance the fog reveal (player + light + timed contributors, blackout)
         // right after the player moves so the lantern tracks with zero lag.
         this.fogSystem?.update(this.game.loop.delta);
@@ -1065,6 +1106,11 @@ export class Game extends Scene {
 
     public getGasClouds(): ReadonlySet<(Phaser.GameObjects.Graphics & GasCloudTag)> | undefined {
         return this.__gasClouds;
+    }
+
+    /** Leave a small green decal where a toxic enemy died (ToxicTankEnemy.die). */
+    public spawnToxicDecal(x: number, y: number): void {
+        this.decalSystem?.addToxicStain(x, y);
     }
 
     // Internal hook for relics to adjust XP multiplier
@@ -1810,7 +1856,11 @@ export class Game extends Scene {
         
         // Create explosion radius (BOMB uses full radius; airstrike blasts are "medium")
         const explosionRadius = ExplosionConfig.RADIUS * radiusMultiplier;
-        
+
+        // Leave a charred scorch on the ground. This single hook covers BOMB and
+        // every AIRSTRIKE sub-blast (the airstrike funnels through this method).
+        this.decalSystem?.addScorch(x, y, explosionRadius);
+
         // Create explosion visual effect.
         // Draw circles centered at the graphics object's local origin (0, 0) and
         // position the object itself at (x, y). This keeps scale tweens centered
@@ -1902,6 +1952,14 @@ export class Game extends Scene {
                 // Apply damage only to enemies within the original explosion radius
                 if (distance <= explosionRadius) {
                     enemy.takeDamage(explosionDamage);
+                    // Bombs / airstrikes have a chance to set fire to enemies they
+                    // DAMAGE but do not kill. takeDamage()→die()→destroy() flips
+                    // `active` to false on a lethal hit, so `enemy.active` here is
+                    // exactly "damaged, survived". One hook covers BOMB + AIRSTRIKE
+                    // (the airstrike funnels every blast through this method).
+                    if (enemy.active && Math.random() < GameConfig.BURN.IGNITE_CHANCE) {
+                        this.burnSystem?.ignite(enemy);
+                    }
                 }
             }
         });
@@ -2071,6 +2129,10 @@ export class Game extends Scene {
         // enemySpawnSystem.destroy() finally kills them (else they'd leak).
         this.extractionSystem?.destroy();
         this.lightSystem?.destroy();
+        // Before fogSystem: BurnSystem.destroy() removes its reveal contributors,
+        // which must happen while the fog still exists.
+        this.burnSystem?.destroy();
+        this.decalSystem?.destroy();
         this.fogSystem?.destroy();
         this.enemySpawnSystem?.destroy();
         this.weaponSystem?.destroy();

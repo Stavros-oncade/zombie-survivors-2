@@ -4,6 +4,7 @@ import { CampSystem } from '../systems/CampSystem';
 import { CAMP_BUILDINGS } from '../config/CampBuildings';
 import { BuildingId } from '../types/CampTypes';
 import { CampPlayer } from '../entities/CampPlayer';
+import { transitionTo, fadeIn } from '../utils/transition';
 
 // The Survivor Camp — a small walkable plaza hub (no combat). The player navigates
 // like a level and steps into ZONES (Command Tent, Departure Gate) that open menus
@@ -57,6 +58,9 @@ export class Camp extends Scene {
   private hint!: Phaser.GameObjects.Text;
   private activeZoneId: string | null = null;
   private isMobile = false;
+  // Set when arriving from the Main Menu — shows a one-shot camp-status arrival
+  // card over the plaza (skippable). Other entries (back from a sub-menu) skip it.
+  private showArrival = false;
 
   // Virtual joystick state (mirrors the Game scene's touch wiring).
   private initialTouchPoint: Phaser.Math.Vector2 | null = null;
@@ -65,7 +69,12 @@ export class Camp extends Scene {
   // Mobile contextual action buttons (rebuilt when the active zone changes).
   private actionButtons: Phaser.GameObjects.Container[] = [];
 
+  init(data?: { showArrival?: boolean }) {
+    this.showArrival = !!data?.showArrival;
+  }
+
   create() {
+    fadeIn(this);
     this.camp = CampSystem.getInstance();
     // reset per-entry state (Phaser reuses scene instances across start()).
     this.zones = [];
@@ -80,6 +89,51 @@ export class Camp extends Scene {
       return;
     }
     this.buildPlaza();
+    if (this.showArrival) this.showArrivalCard();
+  }
+
+  // ─────────────────────────────── arrival card ───────────────────────────────
+  // A brief, skippable "you're home" beat shown only when entering from the Main
+  // Menu. It surfaces CampSystem stakes (cycle, population, needs, breach) over the
+  // already-built plaza, then fades to reveal the hub. Click / any key skips it.
+  private showArrivalCard() {
+    const cam = this.cameras.main;
+    const cx = cam.width / 2, cy = cam.height / 2;
+    const state = this.camp.getState();
+    const breach = state.hordeStrength > this.camp.getCampDefense();
+
+    const layer = this.add.container(0, 0).setScrollFactor(0).setDepth(9000);
+    const dim = this.add.rectangle(0, 0, cam.width, cam.height, 0x0a0d14, 0.82).setOrigin(0);
+    const title = this.add.text(cx, cy - 84, 'SURVIVOR CAMP', {
+      fontFamily: 'Arial Black', fontSize: '42px', color: '#ffd27f', stroke: '#000000', strokeThickness: 7,
+    }).setOrigin(0.5);
+    const cycle = this.add.text(cx, cy - 38, `CYCLE ${state.cyclesSurvived}`, {
+      fontFamily: 'Arial Black', fontSize: '20px', color: '#7fd6ff', stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5);
+    const pop = this.add.text(cx, cy, `${state.survivors} / ${this.camp.getSurvivorCap()} SURVIVORS`, {
+      fontFamily: 'Arial Black', fontSize: '26px', color: '#ffffff', stroke: '#000000', strokeThickness: 5,
+    }).setOrigin(0.5);
+    const needs = this.add.text(cx, cy + 36,
+      `Food ${state.needs.food.stock}    Water ${state.needs.water.stock}    Med ${state.needs.medicine.stock}`, {
+      fontFamily: 'Arial', fontSize: '18px', color: '#cfe8ff', stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5);
+    const stakes = this.add.text(cx, cy + 78,
+      breach ? 'THE HORDE IS AT THE WALLS' : 'The camp holds — for now.', {
+      fontFamily: 'Arial Black', fontSize: '18px', color: breach ? '#ff5555' : '#ffd27f',
+      stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5);
+    layer.add([dim, title, cycle, pop, needs, stakes]);
+
+    let dismissed = false;
+    const dismiss = () => {
+      if (dismissed) return;
+      dismissed = true;
+      this.tweens.add({ targets: layer, alpha: 0, duration: 400, ease: 'Sine.easeIn',
+        onComplete: () => layer.destroy() });
+    };
+    this.time.delayedCall(1600, dismiss);
+    this.input.once('pointerdown', dismiss);
+    this.input.keyboard?.once('keydown', dismiss);
   }
 
   // ─────────────────────────────── plaza ───────────────────────────────
@@ -121,13 +175,13 @@ export class Camp extends Scene {
     this.zones = [
       {
         id: 'command', x: 300, y: 380, title: 'Command Tent', texKey: 'tent_command',
-        actions: [{ key: 'E', keyLabel: 'E', label: 'Manage', run: () => this.scene.start(SceneKey.CampUpgrades) }],
+        actions: [{ key: 'E', keyLabel: 'E', label: 'Manage', run: () => transitionTo(this, SceneKey.CampUpgrades) }],
       },
       {
         id: 'gate', x: 980, y: 380, title: 'Departure Gate', texKey: 'gate_departure',
         actions: [
-          { key: 'E', keyLabel: 'E', label: 'Jobs', run: () => this.scene.start(SceneKey.JobBoard) },
-          { key: 'C', keyLabel: 'C', label: 'City Map', run: () => this.scene.start(SceneKey.CityReclamation) },
+          { key: 'E', keyLabel: 'E', label: 'Jobs', run: () => transitionTo(this, SceneKey.JobBoard) },
+          { key: 'C', keyLabel: 'C', label: 'City Map', run: () => transitionTo(this, SceneKey.CityReclamation) },
         ],
       },
     ];
@@ -178,7 +232,7 @@ export class Camp extends Scene {
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(5001).setInteractive({ useHandCursor: true })
       .on('pointerover', function (this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffff00' }); })
       .on('pointerout', function (this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffffff' }); })
-      .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
+      .on('pointerdown', () => transitionTo(this, SceneKey.MainMenu));
   }
 
   update() {
@@ -196,7 +250,7 @@ export class Camp extends Scene {
 
     // Escape → title.
     if (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc)) {
-      this.scene.start(SceneKey.MainMenu);
+      transitionTo(this, SceneKey.MainMenu);
       return;
     }
 
@@ -287,7 +341,9 @@ export class Camp extends Scene {
     for (let i = 0; i < n; i++) {
       const x = Phaser.Math.Between(180, WORLD_W - 180);
       const y = Phaser.Math.Between(320, WORLD_H - 120);
-      const sprite = this.add.sprite(x, y, variants[i % variants.length]).setDepth(y);
+      // Survivor art is authored at 96px; render at 0.75 so the NPCs sit in scale
+      // next to the player and structures rather than dwarfing the plaza.
+      const sprite = this.add.sprite(x, y, variants[i % variants.length]).setScale(0.75).setDepth(y);
       const speed = 25 + Math.random() * 35;
       const angle = Math.random() * Math.PI * 2;
       this.npcs.push({ sprite, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed });
@@ -467,6 +523,6 @@ export class Camp extends Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerover', function (this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffff00' }); })
       .on('pointerout', function (this: Phaser.GameObjects.Text) { this.setStyle({ color: '#cccccc' }); })
-      .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
+      .on('pointerdown', () => transitionTo(this, SceneKey.MainMenu));
   }
 }

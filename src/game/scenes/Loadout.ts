@@ -11,6 +11,7 @@ import { SUPPLIES, PERKS, RISK_MODIFIERS, MAX_PERK_SOCKETS, MAX_SURVIVOR_SLOTS }
 import { RiskModifierId } from '../types/ExpeditionTypes';
 import { ReconSystem } from '../systems/ReconSystem';
 import { generateReconMap } from '../systems/ReconMapGenerator';
+import { transitionTo, fadeIn, FADE_NIGHT } from '../utils/transition';
 
 export class Loadout extends Scene {
   // Keep reference for future UI updates
@@ -43,6 +44,7 @@ export class Loadout extends Scene {
   }
 
   create() {
+    fadeIn(this);
     const lm = LoadoutManager.getInstance();
     const w = this.cameras.main.width;
     const h = this.cameras.main.height;
@@ -175,7 +177,9 @@ export class Loadout extends Scene {
         // Normal run flow bypasses the dev SpawnTuner, so reset any stale
         // tuner settings to safe defaults before starting the game.
         SpawningConfig.getInstance().reset();
-        this.scene.start(SceneKey.Game, { expeditionPlan: plan });
+        // Deploy beat: the dedicated Briefing scene front-loads the objective and
+        // loadout, then flashes into the Game (which is handed `briefed: true`).
+        transitionTo(this, SceneKey.Briefing, { expeditionPlan: plan }, { color: FADE_NIGHT });
       });
 
     // Initial validation state for the Start button.
@@ -196,7 +200,7 @@ export class Loadout extends Scene {
       killstreakPerkId: lm.getKillstreakPerk(),
     });
     SpawningConfig.getInstance().reset();
-    this.scene.start(SceneKey.RouteMap);
+    transitionTo(this, SceneKey.RouteMap);
   }
 
   // ─────────────────────── Starting weapon selection ───────────────────────

@@ -3,6 +3,7 @@ import { SceneKey } from '../config/SceneKeys';
 import { ReconSystem } from '../systems/ReconSystem';
 import { SpawningConfig } from '../systems/SpawningConfig';
 import { ReconConfig } from '../config/ReconConfig';
+import { transitionTo, fadeIn, FADE_NIGHT } from '../utils/transition';
 import {
   ReconMap,
   ReconNode,
@@ -49,6 +50,7 @@ export class RouteMap extends Scene {
       this.scene.start(SceneKey.JobBoard);
       return;
     }
+    fadeIn(this);
     const w = this.cameras.main.width;
     const h = this.cameras.main.height;
     this.cameras.main.setBackgroundColor(0x100d18);
@@ -76,7 +78,7 @@ export class RouteMap extends Scene {
       .on('pointerout', () => abandonBtn.setStyle({ color: '#ff8888' }))
       .on('pointerdown', () => {
         const payout = recon.abandonRecon();
-        this.scene.start(SceneKey.GameOver, { outcome: 'lose', reconPayout: payout });
+        transitionTo(this, SceneKey.GameOver, { outcome: 'lose', reconPayout: payout });
       });
 
     // Back to Job Board (leaves the recon resumable — state stays persisted).
@@ -86,7 +88,7 @@ export class RouteMap extends Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerover', () => backBtn.setStyle({ color: '#ffff00' }))
       .on('pointerout', () => backBtn.setStyle({ color: '#ffffff' }))
-      .on('pointerdown', () => this.scene.start(SceneKey.JobBoard));
+      .on('pointerdown', () => transitionTo(this, SceneKey.JobBoard));
   }
 
   private headerLine(recon: ReconSystem): string {
@@ -185,7 +187,7 @@ export class RouteMap extends Scene {
       // Launch the Game run; it reads ReconSystem in create() (§5.3). Reset stale
       // dev SpawnTuner state, same as the City/Job Board launch path.
       SpawningConfig.getInstance().reset();
-      this.scene.start(SceneKey.Game);
+      transitionTo(this, SceneKey.Game, undefined, { color: FADE_NIGHT });
     } else {
       this.resolveMapNode(node, recon);
     }

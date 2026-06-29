@@ -52,6 +52,8 @@ interface FlickerRecord {
 interface PlacedLight extends FlickerRecord {
   x: number;
   y: number;
+  /** Light kind, so callers can query e.g. fire barrels (BurnSystem ignition). */
+  kind: LightDef['kind'];
   /** The renderable object body (placeholder shape) drawn over the glow pool. */
   obj: Phaser.GameObjects.Image;
   handle?: FogContributorHandle;
@@ -306,6 +308,20 @@ export class LightSystem {
     return out;
   }
 
+  /**
+   * Positions of the burning trashcan barrels — open-flame light sources that
+   * ignite zombies wandering into them (BurnSystem). Placed lights are static, so
+   * these are fixed for the run; returned fresh each call to keep BurnSystem from
+   * holding internal references into LightSystem.
+   */
+  public getFireSources(): Array<{ x: number; y: number }> {
+    const out: Array<{ x: number; y: number }> = [];
+    for (const p of this.placed) {
+      if (p.kind === 'trashcanFire') out.push({ x: p.x, y: p.y });
+    }
+    return out;
+  }
+
   // ─────────────────────────── Update ───────────────────────────
 
   /** Drive dynamic lights. deltaMs from Game.update(), after player.update(...). */
@@ -388,6 +404,7 @@ export class LightSystem {
     this.placed.push({
       glow,
       obj,
+      kind: def.kind,
       glowScale: glow.scale,
       glowAlpha: cfg.GLOW_ALPHA,
       baseRadius: radius,

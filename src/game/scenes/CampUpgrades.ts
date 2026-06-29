@@ -4,6 +4,7 @@ import { BlueprintSystem } from '../systems/BlueprintSystem';
 import { CampSystem } from '../systems/CampSystem';
 import { CAMP_BUILDINGS } from '../config/CampBuildings';
 import { BuildingId, NeedKind } from '../types/CampTypes';
+import { transitionTo, fadeIn } from '../utils/transition';
 
 // The camp management screen, opened from the Command Tent zone in the Camp plaza.
 // This is the stat/list UI that used to BE the Camp scene: NEEDS / HORDE /
@@ -16,6 +17,7 @@ export class CampUpgrades extends Scene {
   private camp!: CampSystem;
 
   create() {
+    fadeIn(this);
     this.camp = CampSystem.getInstance();
     this.renderCamp();
   }
@@ -99,13 +101,13 @@ export class CampUpgrades extends Scene {
     }).setInteractive({ useHandCursor: true })
       .on('pointerover', function (this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffff00' }); })
       .on('pointerout', function (this: Phaser.GameObjects.Text) { this.setStyle({ color: '#9fe0ff' }); })
-      .on('pointerdown', () => this.scene.start(SceneKey.Blueprints));
+      .on('pointerdown', () => transitionTo(this, SceneKey.Blueprints));
 
     // ---- Back to the plaza ----
     this.add.text(w / 2, this.cameras.main.height - 36, 'Back', {
       fontFamily: 'Arial Black', fontSize: '26px', color: '#ffffff', stroke: '#000000', strokeThickness: 6,
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => this.scene.start(SceneKey.Camp));
+      .on('pointerdown', () => transitionTo(this, SceneKey.Camp));
   }
 
   private renderBuildingRow(id: BuildingId, x: number, y: number) {

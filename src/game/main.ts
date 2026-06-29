@@ -8,6 +8,7 @@ import { PauseMenu } from './scenes/PauseMenu';
 import { LevelUpSelection } from './scenes/LevelUpSelection';
 import { ScreenManager } from './utils/ScreenManager';
 import { Loadout } from './scenes/Loadout';
+import { Briefing } from './scenes/Briefing';
 import { Blueprints } from './scenes/Blueprints';
 import { Camp } from './scenes/Camp';
 import { CampUpgrades } from './scenes/CampUpgrades';
@@ -29,6 +30,7 @@ const config: Phaser.Types.Core.GameConfig = {
         Preloader,
         MainMenu,
         Loadout,
+        Briefing,
         SpawnTuner,
         MainGame,
         GameOver,

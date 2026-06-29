@@ -184,5 +184,119 @@ export const GameConfig = {
         IMPACT_LIGHT_FADE_MS: 1000,
         // Warm orange explosion/fire tint for the crater glow.
         IMPACT_LIGHT_TINT: 0xff7a2e,
+    },
+
+    // ─────────────────────────── Fire / Burn Status ───────────────────────────
+    // A zombie can CATCH FIRE (BurnSystem). While burning it takes damage over
+    // time, becomes a moving light source (a procedural glow + a FogSystem reveal
+    // contributor, so a burning horde lights itself out of the shroud), and wears
+    // a procedural flame overlay so it stays readable even where the glow is
+    // capped out. Ignition sources: bombs / airstrikes (a chance on enemies they
+    // DAMAGE but do not kill), contagion (a burning zombie touching another), and
+    // the burning trashcan barrels (LIGHT.trashcanFire). Constants over literals
+    // per AGENTS.md. BurnSystem mirrors the FogSystem / LightSystem lifecycle.
+    BURN: {
+        // ── Damage over time ──────────────────────────────────────────────
+        // Tick cadence and tick count → DURATION = TICK_MS * TICKS (8 * 500 = 4s).
+        TICK_MS: 500,
+        TICKS: 8,
+        // Per tick: a FLAT amount + a fraction of the target's MAX health. The flat
+        // part makes fire LETHAL to the rank-and-file (BASE_HEALTH 40: 8 ticks of
+        // (5 + 0.03*40)=6.2 ⇒ ~50, dead by ~tick 7) — design: "fire kills basics".
+        // The %maxHP part scales the burn to Tanks/elites without nuking them
+        // (Tank 80 ⇒ ~59 over 4s ≈ a heavy softener; Elite 400 ⇒ a slow bonfire).
+        FLAT: 5,
+        PCT_MAXHP: 0.03,
+
+        // ── Ignition chances ──────────────────────────────────────────────
+        // Bomb / airstrike: chance to ignite an enemy that SURVIVES the blast.
+        IGNITE_CHANCE: 0.35,
+
+        // ── Contagion (zombie-to-zombie spread) ───────────────────────────
+        // No enemy↔enemy physics collider exists, so "touch" is a proximity scan
+        // (the ShriekerEnemy aura pattern) run on a cadence, not per-frame.
+        CONTAGION_RADIUS: 40,        // px — roughly two 0.5-scaled bodies touching
+        CONTAGION_CHECK_MS: 250,     // how often the spread + barrel scans run
+        CONTAGION_CHANCE: 0.25,      // per in-contact neighbour per check (gen 0)
+        // Runaway guards: a contagion-started fire spreads at CHANCE * DECAY^gen and
+        // can't spread at all past MAX_GEN; once MAX_BURNING zombies are alight,
+        // contagion stops igniting (primary sources — bombs/barrels — still can).
+        CONTAGION_GEN_DECAY: 0.6,
+        CONTAGION_MAX_GEN: 3,
+        MAX_BURNING: 24,
+        // After a fire BURNS OUT (survived), the zombie is fire-immune this long so
+        // two neighbours can't become an eternal back-and-forth bonfire.
+        REIGNITE_LOCKOUT_MS: 1500,
+
+        // ── Burning trashcan barrels ──────────────────────────────────────
+        // The placed trashcanFire lights ignite zombies that wander into the flame.
+        BARREL_IGNITE_RADIUS: 54,    // px from the barrel — "stand in the fire"
+        BARREL_IGNITE_CHANCE: 0.6,   // per zombie in range per CONTAGION_CHECK_MS
+
+        // ── Light source while burning ────────────────────────────────────
+        // Smaller than a streetlight (320) or trashcan fire (210): one zombie is a
+        // small torch. Only the first MAX_BURNING_LIGHTS burning zombies register a
+        // glow + fog contributor (the per-contributor RT erase is the real cost);
+        // the rest still burn + wear the flame overlay but don't carve the fog.
+        LIGHT_RADIUS: 130,
+        LIGHT_TINT: 0xff6a2e,
+        LIGHT_ALPHA: 0.45,
+        MAX_BURNING_LIGHTS: 8,
+        GLOW: {
+            TEXTURE_SIZE: 256,
+            BASE_RADIUS: 128,        // glow drawn at scale LIGHT_RADIUS / BASE_RADIUS
+            INNER_RATIO: 0.12,
+        },
+
+        // ── On-sprite flame overlay (readability) ─────────────────────────
+        // A procedural flame sprite (no art asset) layered over the burning zombie
+        // so it reads as "on fire" even when its glow is capped out or it's lit by
+        // someone else. Origin bottom-centre; sits a touch above the body, below
+        // the fog so it shows wherever the area is revealed.
+        SPRITE_TINT: 0xff8a3c,       // warm tint on the zombie itself
+        FLAME_DEPTH: 60,             // above entities (~0-4), below fog (500)
+        FLAME_OFFSET_Y: 6,           // px the flame base sits above the body centre
+        FLAME_TEX: { WIDTH: 22, HEIGHT: 30 },
+    },
+
+    // ─────────────────────────── Ground Decals ───────────────────────────
+    // Lasting marks left ON the ground by violence: a charred scorch where a bomb
+    // / airstrike blast lands, and a small green stain where a toxic enemy dies.
+    // Owned by DecalSystem (mirrors the BurnSystem lifecycle: built in create(),
+    // ticked in update(), torn down in shutdownScene()). Purely cosmetic — decals
+    // never touch fog, physics or damage. They fade out on a long timer and a hard
+    // MAX cap recycles the oldest so a long mission can't accumulate them forever.
+    DECAL: {
+        // Render just above the background (BACKGROUND.DEPTH -1) so marks lie ON
+        // the ground — below gas clouds (-0.5), explosion particles (0) and every
+        // entity (~0+). Stacked decals draw in spawn order at this one depth.
+        DEPTH: -0.95,
+        // Hard cap on simultaneous decals; past this the OLDEST is destroyed first.
+        MAX: 48,
+
+        // ── Blast scorch (bombs + airstrikes) ──
+        SCORCH: {
+            TEXTURE_SIZE: 192,     // square canvas (px) the scorch is baked into
+            // Scorch radius as a fraction of the blast's explosion radius — a
+            // charred patch the size of the bright inner blast (which is also 0.5x),
+            // so it reads as a crater, not a full-screen stain.
+            RADIUS_RATIO: 0.5,
+            BASE_ALPHA: 0.75,      // peak opacity once faded in
+            FADE_IN_MS: 150,       // quick darken as the blast flash clears
+            LIFETIME_MS: 22000,    // hold at full opacity before the fade tail
+            FADE_OUT_MS: 4000,     // slow fade so the crater dims rather than pops
+            JITTER: 0.18,          // ± per-scorch scale so craters aren't clones
+        },
+
+        // ── Toxic death stain (ToxicTankEnemy.die) ──
+        TOXIC: {
+            TEXTURE_SIZE: 96,      // square canvas (px) the stain is baked into
+            RADIUS: 34,            // px — a small green splat under the corpse
+            BASE_ALPHA: 0.55,
+            FADE_IN_MS: 200,
+            LIFETIME_MS: 16000,
+            FADE_OUT_MS: 3500,
+            JITTER: 0.2,           // ± per-stain scale so splats aren't clones
+        },
     }
 };

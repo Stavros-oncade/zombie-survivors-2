@@ -2,12 +2,14 @@ import { Scene } from 'phaser';
 import { BLUEPRINTS, BlueprintSystem } from '../systems/BlueprintSystem';
 import { CityReclamationSystem } from '../systems/CityReclamationSystem';
 import { SceneKey } from '../config/SceneKeys';
+import { transitionTo, fadeIn } from '../utils/transition';
 
 export class Blueprints extends Scene {
   constructor() { super(SceneKey.Blueprints); }
   private pointsText!: Phaser.GameObjects.Text;
 
   create() {
+    fadeIn(this);
     const w = this.cameras.main.width;
     this.add.text(w/2, 60, 'Blueprints', {
       fontFamily: 'Arial Black', fontSize: '36px', color: '#ffffff', stroke: '#000000', strokeThickness: 6
@@ -57,6 +59,6 @@ export class Blueprints extends Scene {
     this.add.text(w/2, y + 40, 'Back', {
       fontFamily: 'Arial Black', fontSize: '28px', color: '#ffffff', stroke: '#000000', strokeThickness: 6
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
-    .on('pointerdown', () => this.scene.start(SceneKey.CampUpgrades));
+    .on('pointerdown', () => transitionTo(this, SceneKey.CampUpgrades));
   }
 }

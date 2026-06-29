@@ -10,6 +10,7 @@ import { CityReclamationSystem, JobWinResult } from '../systems/CityReclamationS
 import { LoadoutManager } from '../systems/LoadoutManager';
 import { ZoneState } from '../types/CityTypes';
 import { ReconPayout } from '../types/ReconTypes';
+import { transitionTo, fadeIn } from '../utils/transition';
 
 export class GameOver extends Scene
 {
@@ -113,6 +114,7 @@ export class GameOver extends Scene
 
     create ()
     {
+        fadeIn(this);
         const isWin = this.outcome === 'win';
 
         // Advance the Survivor Camp by one cycle (per run resolved). Idempotent
@@ -277,7 +279,7 @@ export class GameOver extends Scene
                     backgroundColor: '#000000', stroke: '#000000', strokeThickness: 4,
                     padding: { x: 20, y: 10 },
                 }).setOrigin(0.5).setDepth(100).setInteractive({ useHandCursor: true })
-                  .on('pointerdown', () => this.scene.start(SceneKey.Camp));
+                  .on('pointerdown', () => transitionTo(this, SceneKey.Camp, { showArrival: true }));
                 this.scene.get(SceneKey.Game).events.emit('current-scene-ready', this);
                 return;
             }
@@ -344,7 +346,7 @@ export class GameOver extends Scene
 
     changeScene ()
     {
-        if (this.reconPayout) { this.scene.start(SceneKey.JobBoard); return; }
-        this.scene.start(this.cameFromZoneJob ? SceneKey.CityReclamation : SceneKey.MainMenu);
+        if (this.reconPayout) { transitionTo(this, SceneKey.JobBoard); return; }
+        transitionTo(this, this.cameFromZoneJob ? SceneKey.CityReclamation : SceneKey.MainMenu);
     }
 }

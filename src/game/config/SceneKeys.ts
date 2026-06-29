@@ -3,6 +3,7 @@ export enum SceneKey {
   Preloader = 'Preloader',
   MainMenu = 'MainMenu',
   Loadout = 'Loadout',
+  Briefing = 'Briefing',
   SpawnTuner = 'SpawnTuner',
   Game = 'Game',
   GameOver = 'GameOver',

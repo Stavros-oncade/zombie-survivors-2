@@ -48,6 +48,8 @@ export class ToxicTankEnemy extends Enemy {
     g.__gasTick = tick;
     const gameScene = this.scene.scene.get(SceneKey.Game) as Game;
     gameScene.registerGasCloud(g);
+    // Lasting green stain on the ground where the toxic corpse fell.
+    gameScene.spawnToxicDecal(this.x, this.y);
     this.scene.time.delayedCall(5000, () => {
       try { tick.destroy(); } catch {}
       try { g.destroy(); } catch {}

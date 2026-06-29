@@ -7,6 +7,7 @@ import { CampaignSystem } from '../systems/CampaignSystem';
 import { CampSystem } from '../systems/CampSystem';
 import { JobBoardConfig } from '../config/JobBoardConfig';
 import { SpawningConfig } from '../systems/SpawningConfig';
+import { transitionTo, fadeIn } from '../utils/transition';
 
 // The Job Board: 3 mission offers the player chooses between (§7). Text-driven,
 // matching Loadout/Blueprints style. Picking an offer commits it via
@@ -40,6 +41,7 @@ export class JobBoard extends Scene {
   private static readonly LABEL_COLOR = '#8a7f63';
 
   create() {
+    fadeIn(this);
     const w = this.cameras.main.width;
     const h = this.cameras.main.height;
     this.cameras.main.setBackgroundColor(0x14110c);
@@ -106,7 +108,7 @@ export class JobBoard extends Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerover', () => backBtn.setStyle({ color: '#ffff00' }))
       .on('pointerout', () => backBtn.setStyle({ color: '#ffffff' }))
-      .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
+      .on('pointerdown', () => transitionTo(this, SceneKey.MainMenu));
   }
 
   private currenciesLine(): string {
@@ -330,19 +332,19 @@ export class JobBoard extends Scene {
       case JobLaunchKind.GAME_RUN:
         // Normal run flow bypasses the dev SpawnTuner; reset stale tuner state.
         SpawningConfig.getInstance().reset();
-        this.scene.start(SceneKey.Loadout);
+        transitionTo(this, SceneKey.Loadout);
         break;
       case JobLaunchKind.LONG_RECON:
         // Expedition: outfit ONCE (Loadout in recon mode), which on Start generates
         // the DAG, calls ReconSystem.startRecon, and routes to the RouteMap (§6/§12).
         SpawningConfig.getInstance().reset();
-        this.scene.start(SceneKey.Loadout, { reconMode: true });
+        transitionTo(this, SceneKey.Loadout, { reconMode: true });
         break;
       case JobLaunchKind.CITY_RECLAMATION:
         // Route to the City Reclamation meta-map: the player picks a zone there, which
         // sets its own mission + active zone job (the board offer's nominal mission is
         // discarded — clearAcceptedOffer is called when a zone is accepted).
-        this.scene.start(SceneKey.CityReclamation);
+        transitionTo(this, SceneKey.CityReclamation);
         break;
     }
   }

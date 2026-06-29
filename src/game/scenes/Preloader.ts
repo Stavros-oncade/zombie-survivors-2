@@ -3,6 +3,7 @@ import { Scene } from 'phaser';
 interface AssetManifestEntry { id: string; type: string; status: string; urls?: { webp?: string; png?: string } }
 interface AssetManifest { cdnBaseUrl?: string; entries?: AssetManifestEntry[] }
 import { SceneKey } from '../config/SceneKeys';
+import { transitionTo } from '../utils/transition';
 
 export class Preloader extends Scene
 {
@@ -185,7 +186,7 @@ export class Preloader extends Scene
             p.destroy();
         }
 
-        this.scene.start(SceneKey.MainMenu);
+        transitionTo(this, SceneKey.MainMenu);
     }
 }
         // Blueprint drop icon

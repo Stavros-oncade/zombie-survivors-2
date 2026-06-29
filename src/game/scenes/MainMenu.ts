@@ -6,6 +6,7 @@ import { ScreenManager } from '../utils/ScreenManager';
 import { GameConfig } from '../config/GameConfig';
 import { SceneKey } from '../config/SceneKeys';
 import { ReconSystem } from '../systems/ReconSystem';
+import { transitionTo, fadeIn } from '../utils/transition';
 
 export class MainMenu extends Scene
 {
@@ -31,6 +32,8 @@ export class MainMenu extends Scene
 
     async create ()
     {
+        fadeIn(this);
+
         // Initialize Oncade SDK first
         await initializeOncade().then(() => {
             // You could potentially enable Oncade buttons only after successful init
@@ -140,11 +143,11 @@ export class MainMenu extends Scene
         .setInteractive({ useHandCursor: true })
         .on('pointerover', () => this.playButton.setStyle({ color: '#ffff00' }))
         .on('pointerout', () => this.playButton.setStyle({ color: '#ffffff' }))
-        .on('pointerdown', () => this.scene.start(SceneKey.Camp));
+        .on('pointerdown', () => transitionTo(this, SceneKey.Camp, { showArrival: true }));
 
         // Spawn Tuner (Debug) Button
         const tunerButton = this.createButton('Spawn Tuner', () => {
-            this.scene.start(SceneKey.SpawnTuner);
+            transitionTo(this, SceneKey.SpawnTuner);
         });
         tunerButton.setPosition(this.cameras.main.width / 2, playButtonY - buttonYOffset);
         tunerButton.setDepth(102);
@@ -153,7 +156,7 @@ export class MainMenu extends Scene
         // straight into the RouteMap at the current node from the persisted run-state.
         if (ReconSystem.getInstance().isActive()) {
             const resumeButton = this.createButton('Resume Recon', () => {
-                this.scene.start(SceneKey.RouteMap);
+                transitionTo(this, SceneKey.RouteMap);
             });
             resumeButton.setPosition(this.cameras.main.width / 2, playButtonY - buttonYOffset * 2);
             resumeButton.setDepth(102);
@@ -183,7 +186,7 @@ export class MainMenu extends Scene
         // Clean up all zombies and their update callbacks
         this.cleanupZombies();
 
-        this.scene.start(SceneKey.Loadout);
+        transitionTo(this, SceneKey.Loadout);
     }
 
     cleanupZombies(): void {

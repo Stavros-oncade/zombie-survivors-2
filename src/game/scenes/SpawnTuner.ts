@@ -2,6 +2,7 @@ import { Scene } from 'phaser';
 import { SpawningConfig } from '../systems/SpawningConfig';
 import { SpawnState } from '../types/GameTypes';
 import { SceneKey } from '../config/SceneKeys';
+import { transitionTo, fadeIn, FADE_NIGHT } from '../utils/transition';
 
 export class SpawnTuner extends Scene {
   constructor() { super(SceneKey.SpawnTuner); }
@@ -12,6 +13,7 @@ export class SpawnTuner extends Scene {
   private startStateText?: Phaser.GameObjects.Text;
 
   create() {
+    fadeIn(this);
     // Clean up any stale references from a previous run
     this.eliteToggleText = undefined;
     this.bossToggleText = undefined;
@@ -139,12 +141,12 @@ export class SpawnTuner extends Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerover', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffff00' }); })
       .on('pointerout', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffffff' }); })
-      .on('pointerdown', () => this.scene.start(SceneKey.Game));
+      .on('pointerdown', () => transitionTo(this, SceneKey.Game, undefined, { color: FADE_NIGHT }));
 
     // Back option
     this.add.text(40, h - 40, 'Back', { fontFamily: 'Arial', fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 })
       .setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
+      .on('pointerdown', () => transitionTo(this, SceneKey.MainMenu));
 
     // On shutdown/destroy, clear references so we don't hold onto destroyed objects
     this.events.once('shutdown', () => {

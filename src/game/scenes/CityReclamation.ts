@@ -8,6 +8,7 @@ import { SpawningConfig } from '../systems/SpawningConfig';
 import { registerMission } from '../config/Missions';
 import { Mission } from '../types/MissionTypes';
 import { BiomeId, CityDef, ZoneDef, ZoneJobDef, ZoneState } from '../types/CityTypes';
+import { transitionTo, fadeIn } from '../utils/transition';
 
 // The City Reclamation meta-map (§9). Renders the current city's zone graph by
 // ZoneDef.grid, edges from adjacency, per-zone visual state (color/fog/fill bar),
@@ -36,6 +37,7 @@ export class CityReclamation extends Scene {
   constructor() { super(SceneKey.CityReclamation); }
 
   create() {
+    fadeIn(this);
     const w = this.cameras.main.width;
     const h = this.cameras.main.height;
     const city = CityReclamationSystem.getCurrentCity();
@@ -67,7 +69,7 @@ export class CityReclamation extends Scene {
       }).setOrigin(0.5).setInteractive({ useHandCursor: true })
         .on('pointerover', () => backBtn.setStyle({ color: '#ffff00' }))
         .on('pointerout', () => backBtn.setStyle({ color: '#ffffff' }))
-        .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
+        .on('pointerdown', () => transitionTo(this, SceneKey.MainMenu));
       return;
     }
 
@@ -88,7 +90,7 @@ export class CityReclamation extends Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
       .on('pointerover', () => backBtn.setStyle({ color: '#ffff00' }))
       .on('pointerout', () => backBtn.setStyle({ color: '#ffffff' }))
-      .on('pointerdown', () => this.scene.start(SceneKey.MainMenu));
+      .on('pointerdown', () => transitionTo(this, SceneKey.MainMenu));
   }
 
   private drawGraph(city: CityDef, w: number, h: number): void {
@@ -187,6 +189,6 @@ export class CityReclamation extends Scene {
     lm.setMissionId(missionId);
     lm.setActiveZoneJob({ zoneId: zone.id, jobId: job.id });
     SpawningConfig.getInstance().reset();
-    this.scene.start(SceneKey.Loadout);
+    transitionTo(this, SceneKey.Loadout);
   }
 }
