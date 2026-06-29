@@ -19,14 +19,42 @@ export class WeaponSystem {
         this.scene = scene;
         this.player = player;
         this.enemies = enemies;
-        this.weapons = [
-            new Weapon(scene, {
-                damage: GameConstants.WEAPONS.BASIC_DAMAGE,
-                attackSpeed: GameConstants.WEAPONS.BASIC_ATTACK_SPEED,
-                projectileSpeed: GameConstants.WEAPONS.BASIC_PROJECTILE_SPEED,
-                level: 1
-            })
-        ];
+        this.weapons = [this.createBasicWeapon()];
+    }
+
+    /** The always-present level-1 basic peashooter. Single source of truth so the
+     *  constructor and installMonoWeapon() build it identically. */
+    private createBasicWeapon(): Weapon {
+        return new Weapon(this.scene, {
+            damage: GameConstants.WEAPONS.BASIC_DAMAGE,
+            attackSpeed: GameConstants.WEAPONS.BASIC_ATTACK_SPEED,
+            projectileSpeed: GameConstants.WEAPONS.BASIC_PROJECTILE_SPEED,
+            level: 1
+        });
+    }
+
+    /**
+     * Rebuild the loadout to a single weapon for a Mono-Weapon (Specialist) mission
+     * (docs/specs/mono-weapon-mission-mode.md §7.1). Disposes the existing weapons'
+     * cached summon sprites the same way destroy() does, then rebuilds this.weapons
+     * so it dominates whatever basic/Demolitionist/starting/carried grants were
+     * already applied (it is called LAST in Game.create()).
+     *  - '' / 'basic' / an unknown id keeps the basic Weapon as the sole weapon.
+     *  - any catalog id installs that weapon (fresh level-1 from the factory).
+     *  - replaceBasic=false keeps the basic weapon as a floor under the specialist.
+     */
+    public installMonoWeapon(weaponId: string, replaceBasic: boolean = true): void {
+        // Tear down any summon sprites (drones/mines/orbs) the way destroy() does so
+        // the discarded weapons don't leak their cached entities into the new run.
+        this.weapons.forEach(w => (w as { dispose?: () => void }).dispose?.());
+        const factory = getWeaponFactory(weaponId);
+        if (!factory) {
+            // '' / 'basic' / unknown id: lock to the basic peashooter alone.
+            this.weapons = [this.createBasicWeapon()];
+            return;
+        }
+        const specialist = factory.create(this.scene);
+        this.weapons = replaceBasic ? [specialist] : [this.createBasicWeapon(), specialist];
     }
 
     public update(): void {
@@ -62,8 +90,12 @@ export class WeaponSystem {
 
     /** True once the basic weapon's attack speed has hit its hard cap, so the
      *  Weapon Speed level-up choice can be dropped from the pool (no more 4 -> 4).
-     *  weapons[0] is the always-present basic Weapon (mirrors LevelUpSelection's
-     *  stat preview, which reads weapons[0]). */
+     *  weapons[0] is normally the always-present basic Weapon (mirrors
+     *  LevelUpSelection's stat preview, which reads weapons[0]). In a Mono-Weapon
+     *  run with replaceBasic=true, weapons[0] is the catalog specialist (NOT a basic
+     *  Weapon — catalog weapons only implement IWeapon), so the instanceof guard
+     *  returns false and the WEAPON_SPEED card stays available: the specialist scales
+     *  off WEAPON_SPEED like any weapon. */
     public isWeaponSpeedMaxed(): boolean {
         const basic = this.weapons[0];
         return basic instanceof Weapon && basic.isAttackSpeedMaxed();

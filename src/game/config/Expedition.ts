@@ -60,9 +60,11 @@ export const SUPPLIES: SupplyDef[] = [
   {
     id: SupplyId.SCANNER,
     name: 'Scanner',
-    description: '+25% vision (wider view of the field).',
+    description: '+25% reveal radius in the dark (fog missions).',
     weight: 1,
-    apply: (rc) => rc.setVision(1.25),
+    // Repointed to real Fog of War (docs/specs/fog-of-war.md §4.4): widens the
+    // reveal bubble. Inert on missions that are not fogged.
+    apply: (rc) => rc.setRevealRadius(1.25),
   },
 ];
 
@@ -145,10 +147,15 @@ export const RISK_MODIFIERS: RiskModifierDef[] = [
   {
     id: RiskModifierId.VEIL,
     name: 'The Veil',
-    description: 'Reduced vision (fog).',
+    description: 'The run is fogged — a tighter reveal bubble.',
     rewardBonus: 0.3,
     dangerBonus: 0.15,
-    apply: (rc) => rc.setVision(0.6),
+    // Repointed to real Fog of War (docs/specs/fog-of-war.md §4.4): forces fog ON
+    // for the run and narrows the reveal radius for a reward bump.
+    apply: (rc) => {
+      rc.setFog(true);
+      rc.setRevealRadius(0.65);
+    },
   },
   {
     id: RiskModifierId.BRITTLE,

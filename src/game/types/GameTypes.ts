@@ -68,7 +68,8 @@ export enum PickupType {
     DAMAGE = 'damage',
     EXPERIENCE = 'experience',
     BOMB = 'bomb',
-    AIRSTRIKE = 'airstrike'
+    AIRSTRIKE = 'airstrike',
+    FLARE = 'flare'
 }
 
 export enum RelicRarity {

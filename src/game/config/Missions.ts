@@ -1,4 +1,4 @@
-import { EnemyType } from '../types/GameTypes';
+import { EnemyType, SpawnState } from '../types/GameTypes';
 import { Mission, MissionConditionKind } from '../types/MissionTypes';
 
 // Authored mission catalog — one tuned entry per win-condition kind (§3).
@@ -42,6 +42,22 @@ export const MISSIONS: Mission[] = [
       continuous: false,
     },
     reward: { blueprintPoints: 3 },
+    // Fog of War showcase (docs/specs/fog-of-war.md): the arena is dark, so the
+    // off-screen hold zone must be found via the objective beacon (§5.2). PEAK
+    // waves double as a blackout — the horde arrives when you can see least (§4.5).
+    fog: { enabled: true, blackoutStates: [SpawnState.PEAK] },
+    // Light Sources (docs/specs/fog-of-war-light-sources.md): a streetlight spine
+    // from the player start (world center 1024,768) toward the hold zone (512,384)
+    // — the zone streetlight is a literal sanctuary during the PEAK blackout. A
+    // flickering trashcan fire marks an intersection; a carryable lantern near
+    // spawn lets the player drop a light to hold the zone approach.
+    lights: [
+      { kind: 'streetlight', x: 512, y: 384 },
+      { kind: 'streetlight', x: 730, y: 540 },
+      { kind: 'streetlight', x: 920, y: 660 },
+      { kind: 'trashcanFire', x: 1180, y: 980 },
+      { kind: 'lantern', x: 1024, y: 900, carryable: true },
+    ],
   },
   {
     id: 'm_kill_elites_2',
@@ -75,6 +91,20 @@ export const MISSIONS: Mission[] = [
     difficulty: 2,
     condition: { kind: MissionConditionKind.COLLECT_DROPS, target: 15 },
     reward: { blueprintPoints: 2 },
+    // Fog of War: pickups glint at the edge of your light — push into the dark to
+    // find them (no spatial objective, so the beacon stays hidden — degrades
+    // gracefully per §5.2). A slightly wider lantern to keep scavenging readable.
+    fog: { enabled: true, revealRadius: 460 },
+    // Light Sources: scattered lit islands give the open scavenge arena authored
+    // landmarks to navigate between, plus a carryable flare near spawn to light a
+    // dark pocket while you sweep it for pickups.
+    lights: [
+      { kind: 'streetlight', x: 760, y: 520 },
+      { kind: 'streetlight', x: 1380, y: 560 },
+      { kind: 'streetlight', x: 1300, y: 1080 },
+      { kind: 'trashcanFire', x: 640, y: 1080 },
+      { kind: 'flare', x: 1120, y: 820, carryable: true },
+    ],
   },
   {
     id: 'm_purge_carrier_20',
@@ -88,6 +118,33 @@ export const MISSIONS: Mission[] = [
       requireBoardClearAtFinish: true,
     },
     reward: { blueprintPoints: 4 },
+  },
+  // ── Mono-Weapon "Specialist" missions (docs/specs/mono-weapon-mission-mode.md) ──
+  // Each locks the whole run to one curated weapon, pairing the weapon archetype with
+  // the win condition (§5.3): a CROWD-CLEAR weapon on a horde/extraction objective, a
+  // SINGLE-TARGET weapon on an elite objective. Opt-in mirrors `extraction`/`fog`.
+  {
+    id: 'm_mono_tesla_horde',
+    name: 'Storm Caller',
+    description: 'Specialist run: Tesla Arc only. Kill 150 zombies, then extract.',
+    difficulty: 3,
+    condition: { kind: MissionConditionKind.KILL_COUNT, target: 150 },
+    reward: { blueprintPoints: 3 },
+    // Tesla Arc chains between clustered enemies — a crowd-clear tool, so it is a fair
+    // pairing for a kill-count horde AND the uncapped extraction swarm (§5.3 rule).
+    extraction: { enabled: true },
+    monoWeapon: { enabled: true, weaponId: 'tesla_arc' },
+  },
+  {
+    id: 'm_mono_piercing_elites',
+    name: 'Marksman',
+    description: 'Specialist run: Piercing Shot only. Slay 2 elite zombies.',
+    difficulty: 3,
+    condition: { kind: MissionConditionKind.KILL_ELITES, target: 2 },
+    reward: { blueprintPoints: 3 },
+    // Piercing Shot has real single-target punch (and pierces the chaff between),
+    // so it can break an elite wall — the fair pairing for KILL_ELITES (§5.3 rule).
+    monoWeapon: { enabled: true, weaponId: 'piercing_shot' },
   },
 ];
 

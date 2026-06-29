@@ -163,5 +163,12 @@ export interface RunModifierSink {
   setEnemyDensityMult(mult: number): void; // EnemySpawnSystem hook
   setEnemyDamageMult(mult: number): void; // EnemySpawnSystem hook
   setEliteIntervalMult(mult: number): void; // EnemySpawnSystem hook
-  setVision(mult: number): void; // camera zoom hook
+  setVision(mult: number): void; // camera zoom hook (legacy vision stand-in)
+  // Fog of War hooks (docs/specs/fog-of-war.md §4.4). VEIL/SCANNER drive these.
+  // setFog(true) opts this run into fog even if the mission did not declare it
+  // (the player chose a fog risk modifier); setRevealRadius multiplies the
+  // player's reveal radius (SCANNER widens, VEIL narrows). Both are resolved when
+  // FogSystem is constructed in Game.create().
+  setFog(enabled: boolean): void;
+  setRevealRadius(mult: number): void;
 }

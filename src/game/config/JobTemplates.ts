@@ -7,7 +7,7 @@ import {
   JobModifierKind,
   JobLaunchKind,
 } from '../types/JobBoardTypes';
-import { MissionCondition, MissionConditionKind } from '../types/MissionTypes';
+import { Mission, MissionCondition, MissionConditionKind } from '../types/MissionTypes';
 import { EnemyType } from '../types/GameTypes';
 import { Rng, randInt, pick } from '../utils/Rng';
 
@@ -35,6 +35,10 @@ export interface JobTemplate {
   baseDifficulty: 1 | 2 | 3 | 4 | 5;
   launchKind?: JobLaunchKind;          // default GAME_RUN; set for special jobs
   minTier?: number;                    // gate harder/special templates behind progression
+  /** Mono-Weapon (Specialist) lock for this template (docs/specs/mono-weapon-
+   *  mission-mode.md). Copied verbatim onto the instantiated Mission so the run
+   *  forces this weapon and locks the rest. Omitted ⇒ a normal draft run. */
+  monoWeapon?: Mission['monoWeapon'];
 }
 
 // ── shared modifier makers ───────────────────────────────────────────────
@@ -219,6 +223,37 @@ export const JOB_TEMPLATES: JobTemplate[] = [
     }),
     modifierTable: [modDensity, modBuff],
     rewardEmphasis: { resources: 0.8, blueprints: 0.2 },
+  },
+  // ── Specialist (Mono-Weapon) jobs (docs/specs/mono-weapon-mission-mode.md).
+  //    The whole run is locked to one weapon; weapon + objective are curated as a
+  //    pair (§5.3): a crowd-clear tool on a horde, a single-target tool on elites. ──
+  {
+    id: 't_specialist_storm',
+    titlePool: ['Specialist: Storm Caller', 'Tesla Doctrine', 'One Tool: Arc'],
+    flavorPool: ['Field test: the Arc rig and nothing else. Make it chain.'],
+    conditionKind: MissionConditionKind.KILL_COUNT,
+    baseDifficulty: 3,
+    buildCondition: (rng, tier) => ({
+      kind: MissionConditionKind.KILL_COUNT,
+      target: randInt(rng, 140, 180) + tier * 40,
+    }),
+    modifierTable: [modDensity, modElite],
+    rewardEmphasis: { horde: 0.6, blueprints: 0.4 },
+    monoWeapon: { enabled: true, weaponId: 'tesla_arc' },
+  },
+  {
+    id: 't_specialist_marksman',
+    titlePool: ['Specialist: Marksman', 'Piercing Doctrine', 'One Tool: Lance'],
+    flavorPool: ['Just the Piercing rig. Punch a hole through their line.'],
+    conditionKind: MissionConditionKind.KILL_ELITES,
+    baseDifficulty: 3,
+    buildCondition: (_rng, tier) => ({
+      kind: MissionConditionKind.KILL_ELITES,
+      target: 2 + Math.floor(tier / 2),
+    }),
+    modifierTable: [modElite, modBuff],
+    rewardEmphasis: { blueprints: 0.6, resources: 0.4 },
+    monoWeapon: { enabled: true, weaponId: 'piercing_shot' },
   },
   // ── special offers — route to sub-loops (§6.4). Gated behind minTier until
   //    those scenes exist; the wrapped Mission is nominal. ──

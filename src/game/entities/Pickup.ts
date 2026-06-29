@@ -1,6 +1,7 @@
 import { PickupType } from '../types/GameTypes';
 import { Game } from '../scenes/Game';
 import { SceneKey } from '../config/SceneKeys';
+import { GameConfig } from '../config/GameConfig';
 
 export class Pickup extends Phaser.Physics.Arcade.Sprite {
     private pickupType: PickupType;
@@ -29,6 +30,10 @@ export class Pickup extends Phaser.Physics.Arcade.Sprite {
                 return 'pickup_bomb';
             case PickupType.AIRSTRIKE:
                 // Reuse the bomb texture; a distinct tint is applied in initialize()
+                return 'pickup_bomb';
+            case PickupType.FLARE:
+                // Reuse the bomb texture; a bright red/orange tint (initialize())
+                // makes it read as a flare marker on the map.
                 return 'pickup_bomb';
             default:
                 return 'pickup_health';
@@ -62,6 +67,10 @@ export class Pickup extends Phaser.Physics.Arcade.Sprite {
             case PickupType.AIRSTRIKE:
                 this.value = 0; // Effect is handled directly by the airstrike sequence
                 this.setTint(0x66ccff); // Distinctive light-blue tint
+                break;
+            case PickupType.FLARE:
+                this.value = 0; // Effect is the timed fog reveal, handled in Game
+                this.setTint(GameConfig.FLARE.TINT); // Bright red/orange flare marker
                 break;
         }
 

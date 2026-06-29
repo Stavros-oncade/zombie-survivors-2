@@ -104,9 +104,14 @@ export class ShriekerEnemy extends Enemy {
 
   public override destroy(fromScene?: boolean): void {
     if (this.glowFollowEvent) this.glowFollowEvent.destroy();
-    if (this.glowSprite) this.glowSprite.destroy();
     if (this.auraTween) this.auraTween.remove();
-    if (this.auraRing) this.auraRing.destroy();
+    // The glow sprite and aura ring are scene-owned display objects. On a full
+    // scene shutdown Phaser's DisplayList destroys them on its own pass, so
+    // destroying them here would double-remove and corrupt that iteration.
+    if (!fromScene) {
+      this.glowSprite?.destroy();
+      this.auraRing?.destroy();
+    }
     super.destroy(fromScene);
   }
 }

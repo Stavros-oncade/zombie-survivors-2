@@ -122,7 +122,9 @@ export class RangedEnemy extends Enemy {
 
   public override destroy(fromScene?: boolean): void {
     if (this.glowFollowEvent) this.glowFollowEvent.destroy();
-    if (this.glowSprite) this.glowSprite.destroy();
+    // Skip the scene-owned glow sprite on a full scene shutdown — Phaser's
+    // DisplayList destroys it itself, and doing it here corrupts that loop.
+    if (!fromScene) this.glowSprite?.destroy();
     super.destroy(fromScene);
   }
 }

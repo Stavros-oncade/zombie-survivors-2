@@ -24,6 +24,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     private immunityTimer: Phaser.Time.TimerEvent | null = null;
     private readonly IMMUNITY_DURATION: number = 100; // 100ms immunity
     private isDead: boolean = false;
+    // Last NON-ZERO movement heading (normalized). Held when the player stops so
+    // the flashlight cone (LightSystem) keeps its heading instead of snapping to
+    // zero (light-sources doc §3.3 / §6.4). Defaults to "facing right".
+    private lastFacing: Phaser.Math.Vector2 = new Phaser.Math.Vector2(1, 0);
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, 'player');
@@ -70,6 +74,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         if (direction.x !== 0) {
             this.setFlipX(direction.x < 0);
         }
+
+        // Cache the last non-zero heading (already normalized) so consumers like
+        // the flashlight cone hold a stable facing while the player is idle.
+        if (direction.lengthSq() > 0.0001) {
+            this.lastFacing.copy(direction);
+        }
+    }
+
+    /** Last non-zero movement heading (normalized). Used by the flashlight cone. */
+    public getFacing(): Phaser.Math.Vector2 {
+        return this.lastFacing;
     }
 
     public takeDamage(amount: number, source: Enemy): void {

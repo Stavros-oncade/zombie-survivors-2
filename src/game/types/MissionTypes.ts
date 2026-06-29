@@ -19,6 +19,31 @@ export enum MissionConditionKind {
 export interface WorldPoint { x: number; y: number; }
 
 /**
+ * Light source kinds (docs/specs/fog-of-war-light-sources.md §3).
+ *  - streetlight  : large, steady, cool-white pool (the navigable "spine").
+ *  - trashcanFire : smaller, warm, flickering landmark (an "intersection").
+ *  - lantern      : carryable, dimmer, amber, permanent.
+ *  - flare        : carryable, bright, hot-white, flickering.
+ * streetlight/trashcanFire are placed landmarks; lantern/flare are carryable.
+ */
+export type LightKind = 'streetlight' | 'trashcanFire' | 'lantern' | 'flare';
+
+/**
+ * A single authored light placement (rides alongside `Mission.fog`). Each light
+ * carves a lit pocket into the same fog reveal field as the player bubble.
+ *  - radius?    : override the per-kind base reveal radius (px).
+ *  - carryable? : spawn as a walk-over pickup the player can grab/drop (only
+ *                 meaningful for lantern/flare; placed landmarks ignore it).
+ */
+export interface LightDef {
+  kind: LightKind;
+  x: number;
+  y: number;
+  radius?: number;
+  carryable?: boolean;
+}
+
+/**
  * Classification carried by the `enemyKilledClassified` death signal. A virtual
  * Enemy.getKillClass() produces this so elites/bosses are classified correctly
  * (they are constructed with a base EnemyType and cannot be told apart by it).
@@ -116,6 +141,39 @@ export interface Mission {
   // zone and dwell to win) instead of ending immediately. Missions without this
   // flag are unchanged.
   extraction?: { enabled: boolean; radius?: number; dwellSeconds?: number };
+  // Optional Mono-Weapon "Specialist" mode (docs/specs/mono-weapon-mission-mode.md).
+  // When enabled, the run is locked to a single weapon: the specialist replaces the
+  // player's starting loadout (basic/Demolitionist/starting/carried grants) and every
+  // OTHER catalog weapon is filtered out of the level-up AND relic-chest pools. Mirrors
+  // the `extraction?` opt-in — missions without this flag leave monoWeaponId null and
+  // are byte-for-byte unchanged.
+  //  - weaponId:       fixed specialist (catalog id, e.g. 'tesla_arc'); '' / 'basic'
+  //                    locks to the default peashooter. Resolution order: weaponId.
+  //  - weaponPool:     random-from-set when weaponId is omitted (picked at run start).
+  //  - playerChoice:   (deferred) let the player choose at mission start.
+  //  - replaceBasic:   true = specialist REPLACES the basic weapon (true mono, default);
+  //                    false = specialist layered on top of basic (gentler floor).
+  //  - allowEvolution: (deferred) enable single-source evolution recipes for this run.
+  monoWeapon?: {
+    enabled: boolean;
+    weaponId?: string;
+    weaponPool?: string[];
+    playerChoice?: boolean;
+    replaceBasic?: boolean;
+    allowEvolution?: boolean;
+  };
+  // Optional Fog of War (docs/specs/fog-of-war.md). When enabled, the arena is
+  // shrouded and the player sees only a bubble of light around their survivor.
+  // Mirrors the `extraction?` opt-in: missions without this flag never construct
+  // FogSystem and are byte-for-byte unchanged.
+  //  - revealRadius:   override the default player reveal radius (px).
+  //  - blackoutStates: SpawnState ids that, while active, dim the world (§4.5).
+  fog?: { enabled: boolean; revealRadius?: number; blackoutStates?: string[] };
+  // Optional light sources (docs/specs/fog-of-war-light-sources.md). Placed +
+  // carryable lights that emit into the same reveal field as the player bubble.
+  // Constructed by LightSystem; mirrors the `fog?` opt-in. Missions without
+  // lights (and with fog off) never construct LightSystem (zero change).
+  lights?: LightDef[];
 }
 
 /** Live, per-run progress for the active mission. */

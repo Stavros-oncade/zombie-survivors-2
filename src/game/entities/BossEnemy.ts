@@ -112,7 +112,9 @@ export class BossEnemy extends Enemy {
     if (this.scene && this.scene.events) {
       this.scene.events.emit('boss_died', { x: this.x, y: this.y });
     }
-    this.nameText?.destroy();
+    // Skip the scene-owned name text on a full scene shutdown — Phaser's
+    // DisplayList destroys it itself, and doing it here corrupts that loop.
+    if (!fromScene) this.nameText?.destroy();
     super.destroy(fromScene);
   }
 }

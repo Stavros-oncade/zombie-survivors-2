@@ -1,5 +1,5 @@
 import { PlayerStats, KillstreakPerkId } from '../types/GameTypes';
-import { MissionProgress } from '../types/MissionTypes';
+import { MissionProgress, WorldPoint } from '../types/MissionTypes';
 
 export class GameUI {
     private healthBar: Phaser.GameObjects.Graphics;
@@ -14,6 +14,21 @@ export class GameUI {
     private objectiveTitle: Phaser.GameObjects.Text | null = null;
     private objectiveDetail: Phaser.GameObjects.Text | null = null;
     private objectiveBar: Phaser.GameObjects.Graphics | null = null;
+    // Fog of War objective beacon (§5.2). Created lazily on the first fog frame so
+    // non-fog runs never allocate it (and stay byte-for-byte unchanged).
+    private beaconArrow: Phaser.GameObjects.Graphics | null = null;
+    private beaconLabel: Phaser.GameObjects.Text | null = null;
+    private static readonly BEACON_DEPTH = 1000; // HUD band, above the fog (500)
+    private static readonly BEACON_EDGE_MARGIN = 48;
+    private static readonly BEACON_COLOR = 0x66ddff;
+    // Mono-Weapon (Specialist) persistent HUD chip (mono-weapon-mission-mode.md §6.3).
+    // Created lazily only on a Specialist run; non-mono runs never allocate it.
+    private specialistChip: Phaser.GameObjects.Text | null = null;
+    private static readonly SPECIALIST_DEPTH = 1000; // HUD band, scrollFactor 0
+    // All HUD elements sit in this band so the world-space fog RT (depth 500) and
+    // the light glows never shroud/tint the UI. scrollFactor 0 pins them to the
+    // screen; depth keeps them ABOVE the fog and lighting layers.
+    private static readonly HUD_DEPTH = 1000;
 
     constructor(scene: Phaser.Scene) {
         this.scene = scene;
@@ -87,6 +102,16 @@ export class GameUI {
         }).setScrollFactor(0).setVisible(false);
         this.objectiveBar = this.scene.add.graphics();
         this.objectiveBar.setScrollFactor(0).setVisible(false);
+
+        // Lift every HUD element into the HUD depth band so the fog of war shroud
+        // (world-space RenderTexture at depth 500) and the additive light glows
+        // never render over / darken the UI. (Beacon + specialist chip already set
+        // their own depth when lazily created.)
+        [
+            this.healthBar, this.experienceBar, this.levelText, this.timerText,
+            this.skillCooldownArc, this.skillCooldownLabel, this.killstreakText,
+            this.objectiveTitle, this.objectiveDetail, this.objectiveBar,
+        ].forEach((el) => el.setDepth(GameUI.HUD_DEPTH));
     }
 
     private updateTimer(): void {
@@ -166,7 +191,109 @@ export class GameUI {
         this.objectiveBar.setVisible(true);
     }
 
+    /**
+     * Fog of War objective beacon (§5.2). A screen-edge directional arrow + a
+     * distance label pointing from the player toward the active spatial objective,
+     * bleeding through the shroud. Hidden when there is no spatial objective
+     * (`target` null) or when the objective is already inside the reveal bubble.
+     * Lazily creates its display objects so non-fog runs never allocate them.
+     */
+    public updateObjectiveBeacon(
+        target: WorldPoint | null,
+        playerX: number,
+        playerY: number,
+        revealRadius: number
+    ): void {
+        const dist = target ? Phaser.Math.Distance.Between(playerX, playerY, target.x, target.y) : 0;
+        // No spatial objective, or it's already revealed — hide the beacon.
+        if (!target || dist <= revealRadius) {
+            this.beaconArrow?.setVisible(false);
+            this.beaconLabel?.setVisible(false);
+            return;
+        }
+
+        if (!this.beaconArrow) {
+            this.beaconArrow = this.scene.add.graphics();
+            this.beaconArrow.setScrollFactor(0).setDepth(GameUI.BEACON_DEPTH);
+            // Static arrow geometry pointing along +x (rotated to heading at use).
+            this.beaconArrow.fillStyle(GameUI.BEACON_COLOR, 0.95);
+            this.beaconArrow.lineStyle(2, 0x002233, 0.9);
+            this.beaconArrow.beginPath();
+            this.beaconArrow.moveTo(16, 0);
+            this.beaconArrow.lineTo(-10, -11);
+            this.beaconArrow.lineTo(-4, 0);
+            this.beaconArrow.lineTo(-10, 11);
+            this.beaconArrow.closePath();
+            this.beaconArrow.fillPath();
+            this.beaconArrow.strokePath();
+        }
+        if (!this.beaconLabel) {
+            this.beaconLabel = this.scene.add.text(0, 0, '', {
+                fontSize: '13px', color: '#bff4ff', stroke: '#000000', strokeThickness: 3,
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(GameUI.BEACON_DEPTH);
+        }
+
+        const cam = this.scene.cameras.main;
+        const vw = cam.width;
+        const vh = cam.height;
+        const margin = GameUI.BEACON_EDGE_MARGIN;
+        // World->screen (matches spec §6.2; handles the camera clamping at bounds
+        // so the heading is correct even when the player drifts off-center).
+        const psx = (playerX - cam.worldView.x) * cam.zoom;
+        const psy = (playerY - cam.worldView.y) * cam.zoom;
+        const tsx = (target.x - cam.worldView.x) * cam.zoom;
+        const tsy = (target.y - cam.worldView.y) * cam.zoom;
+        const angle = Math.atan2(tsy - psy, tsx - psx);
+
+        // Clamp the ray origin into the inset rect, then cast to the nearest edge.
+        const ox = Phaser.Math.Clamp(psx, margin, vw - margin);
+        const oy = Phaser.Math.Clamp(psy, margin, vh - margin);
+        const edge = GameUI.rayToRectEdge(ox, oy, angle, margin, margin, vw - margin, vh - margin);
+
+        this.beaconArrow.setPosition(edge.x, edge.y).setRotation(angle).setVisible(true);
+        // Pull the label a touch inward from the arrow so it stays on-screen.
+        this.beaconLabel.setPosition(edge.x - Math.cos(angle) * 26, edge.y - Math.sin(angle) * 26);
+        this.beaconLabel.setText(`${Math.round(dist)}m`).setVisible(true);
+    }
+
+    /** Cast a ray from (ox,oy) at `ang` to the nearest edge of the given rect. */
+    private static rayToRectEdge(
+        ox: number, oy: number, ang: number,
+        left: number, top: number, right: number, bottom: number
+    ): { x: number; y: number } {
+        const dx = Math.cos(ang);
+        const dy = Math.sin(ang);
+        let t = Number.POSITIVE_INFINITY;
+        if (dx > 1e-6) t = Math.min(t, (right - ox) / dx);
+        else if (dx < -1e-6) t = Math.min(t, (left - ox) / dx);
+        if (dy > 1e-6) t = Math.min(t, (bottom - oy) / dy);
+        else if (dy < -1e-6) t = Math.min(t, (top - oy) / dy);
+        if (!isFinite(t) || t < 0) t = 0;
+        return { x: ox + dx * t, y: oy + dy * t };
+    }
+
+    /**
+     * Persistent Specialist HUD chip (docs/specs/mono-weapon-mission-mode.md §6.3):
+     * a small `SPECIALIST · <Weapon>` label pinned to the bottom-left HUD so a player
+     * who never sees a new-weapon card always understands why their weapon is locked.
+     * scrollFactor 0, HUD depth. Lazily created the first time it is shown.
+     */
+    public showSpecialistWeapon(weaponName: string): void {
+        const padding = 16;
+        if (!this.specialistChip) {
+            this.specialistChip = this.scene.add.text(padding, 0, '', {
+                fontFamily: 'Arial Black', fontSize: '13px', color: '#ffd54f',
+                stroke: '#000000', strokeThickness: 3,
+            }).setScrollFactor(0).setDepth(GameUI.SPECIALIST_DEPTH);
+        }
+        // Pin to the bottom-left corner, clear of the top-left HUD/objective stack.
+        this.specialistChip.setPosition(padding, this.scene.cameras.main.height - 26);
+        this.specialistChip.setText(`SPECIALIST · ${weaponName}`);
+        this.specialistChip.setVisible(true);
+    }
+
     public destroy(): void {
+        this.specialistChip?.destroy();
         this.healthBar.destroy();
         this.experienceBar.destroy();
         this.levelText.destroy();
@@ -177,6 +304,8 @@ export class GameUI {
         this.objectiveTitle?.destroy();
         this.objectiveDetail?.destroy();
         this.objectiveBar?.destroy();
+        this.beaconArrow?.destroy();
+        this.beaconLabel?.destroy();
     }
 
     // Getter for gameTime to make it accessible from outside

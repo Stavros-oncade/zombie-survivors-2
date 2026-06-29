@@ -148,14 +148,19 @@ export class EliteEnemy extends Enemy {
     this.telegraphTimer?.destroy();
     this.chargeTimer?.destroy();
     this.moltenTrailTimer?.destroy();
-    this.clearTelegraph();
     // Emit before calling super.destroy, because super may clear this.scene
     if (this.scene && this.scene.events) {
       this.scene.events.emit('elite_died', { x: this.x, y: this.y });
     }
     if (this.glowFollowEvent) this.glowFollowEvent.destroy();
-    if (this.glowSprite) this.glowSprite.destroy();
-    this.nameText?.destroy();
+    // Telegraph graphics, glow sprite and name text are scene-owned display
+    // objects. On a full scene shutdown Phaser's DisplayList destroys them on
+    // its own pass; destroying them here would double-remove and crash it.
+    if (!fromScene) {
+      this.clearTelegraph();
+      this.glowSprite?.destroy();
+      this.nameText?.destroy();
+    }
     super.destroy(fromScene);
   }
 

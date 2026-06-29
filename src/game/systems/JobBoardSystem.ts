@@ -247,6 +247,9 @@ export class JobBoardSystem {
       // double-pay can happen via the legacy GameOver path.
       reward: undefined,
       difficulty: tmpl.baseDifficulty,
+      // Specialist (Mono-Weapon) jobs carry their lock on the template; copy it
+      // onto the instantiated mission so the run forces that weapon (§7.2).
+      monoWeapon: tmpl.monoWeapon,
     };
 
     const difficulty = this.computeDifficulty(mission, modifiers);

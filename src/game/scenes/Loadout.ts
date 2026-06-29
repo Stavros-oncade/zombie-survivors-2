@@ -1,6 +1,7 @@
 import { Scene } from 'phaser';
 import { CHARACTERS, LoadoutManager } from '../systems/LoadoutManager';
-import { WEAPON_CATALOG, isWeaponSelectableAsStarter } from '../weapons/WeaponCatalog';
+import { WEAPON_CATALOG, isWeaponSelectableAsStarter, getWeaponDef } from '../weapons/WeaponCatalog';
+import { resolveMission } from '../config/Missions';
 import { SpawningConfig } from '../systems/SpawningConfig';
 import { SceneKey } from '../config/SceneKeys';
 import { DefensiveSkillId, KillstreakPerkId } from '../types/GameTypes';
@@ -206,6 +207,21 @@ export class Loadout extends Scene {
       fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff', stroke: '#000000', strokeThickness: 4,
     }).setOrigin(0.5);
     y += 60;
+
+    // Mono-Weapon (Specialist) missions with a FIXED weapon ignore the starting-weapon
+    // pick entirely (docs/specs/mono-weapon-mission-mode.md §6.1). Replace the picker
+    // with a read-only callout so the player doesn't choose a starter the run discards.
+    const accepted = JobBoardSystem.getAcceptedOffer();
+    const mission = accepted?.mission ?? resolveMission(lm.getMissionId());
+    const mono = mission.monoWeapon;
+    if (mono?.enabled && mono.weaponId !== undefined) {
+      const lockedName = mono.weaponId ? (getWeaponDef(mono.weaponId)?.name ?? 'Basic') : 'Basic';
+      this.add.text(w/2, y, `SPECIALIST mission — this run locks your weapon to ${lockedName}.`, {
+        fontFamily: 'Arial', fontSize: '16px', color: '#ffd54f', stroke: '#000000', strokeThickness: 3,
+        align: 'center', wordWrap: { width: Math.min(720, w * 0.85) },
+      }).setOrigin(0.5);
+      return y + 40;
+    }
 
     // Only blueprint-unlocked (or city-minted) weapons are selectable. "Basic"
     // is always an option (no starting weapon beyond the default).

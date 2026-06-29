@@ -1,4 +1,5 @@
 import { GameConstants } from '../config/GameConstants';
+import { GameConfig } from '../config/GameConfig';
 import { EnemyType, PickupType } from '../types/GameTypes';
 import { KillClass } from '../types/MissionTypes';
 // Note: base methods accept Phaser sprites to avoid tight coupling
@@ -338,6 +339,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             { type: PickupType.AIRSTRIKE, weight: 2 } // Rare, powerful pickup
         ];
 
+        // The FLARE is a fog-busting consumable — useless on a fully-lit run, so
+        // only offer it when fog is active on this mission (gate via the Game scene).
+        if (this.scene.scene.key === SceneKey.Game && this.scene instanceof Game && this.scene.isFogActive()) {
+            weightedPickups.push({ type: PickupType.FLARE, weight: GameConfig.FLARE.DROP_WEIGHT });
+        }
+
         const totalWeight = weightedPickups.reduce((sum, p) => sum + p.weight, 0);
         let roll = Math.random() * totalWeight;
         let randomType = weightedPickups[0].type;
@@ -435,7 +442,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             this.doubleSpeedGlowEvent = undefined;
         }
         if (this.doubleSpeedGlow) {
-            this.doubleSpeedGlow.destroy();
+            // On a full scene shutdown (fromScene), Phaser's DisplayList tears
+            // this scene-owned sprite down on its own pass — destroying it here
+            // would double-remove it mid-iteration and crash that loop.
+            if (!fromScene) this.doubleSpeedGlow.destroy();
             this.doubleSpeedGlow = null;
         }
 

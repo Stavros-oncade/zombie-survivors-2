@@ -4,7 +4,7 @@ import { Enemy } from "../entities/Enemy";
 import { Pickup } from "../entities/Pickup";
 import { EnemySpawnSystem } from "../systems/EnemySpawnSystem";
 import { WeaponSystem } from "../systems/WeaponSystem";
-import { WEAPON_CATALOG, WeaponUnlockTier, isWeaponUnlocked } from "../weapons/WeaponCatalog";
+import { WEAPON_CATALOG, WeaponUnlockTier, isWeaponUnlocked, getWeaponDef } from "../weapons/WeaponCatalog";
 import { ExperienceSystem } from "../systems/ExperienceSystem";
 import { GameUI } from "../ui/GameUI";
 import { PauseMenu } from "./PauseMenu";
@@ -30,8 +30,10 @@ import { SceneKey } from "../config/SceneKeys";
 import { BossEnemy } from "../entities/BossEnemy";
 import { MissionSystem } from "../systems/MissionSystem";
 import { ExtractionSystem } from "../systems/ExtractionSystem";
+import { FogSystem } from "../systems/FogSystem";
+import { LightSystem } from "../systems/LightSystem";
 import { resolveMission } from "../config/Missions";
-import { Mission, MissionConditionKind } from "../types/MissionTypes";
+import { Mission, MissionConditionKind, WorldPoint } from "../types/MissionTypes";
 import { JobBoardSystem } from "../systems/JobBoardSystem";
 import { JobModifier, JobModifierKind } from "../types/JobBoardTypes";
 import { ExpeditionManager } from "../systems/ExpeditionManager";
@@ -81,7 +83,25 @@ export class Game extends Scene {
     // Optional extraction-end phase. Constructed lazily in beginExtraction() when a
     // mission with `extraction.enabled` completes its primary objective.
     private extractionSystem?: ExtractionSystem;
+    // Optional Fog of War (docs/specs/fog-of-war.md). Constructed in create() ONLY
+    // when the active mission opts in (Mission.fog) or a fog risk-modifier forces
+    // it; otherwise undefined and the run is byte-for-byte unchanged.
+    private fogSystem?: FogSystem;
+    // Optional Light Sources (docs/specs/fog-of-war-light-sources.md). Constructed
+    // in create() ONLY when the mission declares `lights` or fog is on; otherwise
+    // undefined and the run is byte-for-byte unchanged. Owns the glow entities and
+    // registers each as a FogSystem reveal contributor.
+    private lightSystem?: LightSystem;
+    // Fog modifiers accumulated by the RunModifierSink before the mission/FogSystem
+    // is resolved (SCANNER widens reveal, VEIL narrows it + forces fog on).
+    private pendingRevealRadiusMult: number = 1;
+    private forceFogEnabled: boolean = false;
     private activeMission!: Mission;
+    // Mono-Weapon (Specialist) mode (docs/specs/mono-weapon-mission-mode.md). The
+    // resolved locked-weapon id when the active mission opts in, else null. Non-null
+    // arms the upgrade-pool filter (getCappedUpgradeIds), the HUD chip, and the banner
+    // line. '' is a valid value: "basic-weapon-only" mono (all catalog weapons locked).
+    private monoWeaponId: string | null = null;
     // Run modifiers carried in from the accepted Job Board offer (§6.3).
     private activeModifiers: JobModifier[] = [];
     // Single latch so a WIN and a death resolving in the same frame can't both
@@ -116,6 +136,9 @@ export class Game extends Scene {
         this.runEnded = false;
         this.chestQueue = 0;
         this.chestOpen = false;
+        // Mono-Weapon mode: reset per-run so a reused scene instance can't leak a
+        // previous Specialist lock into a normal mission (both seams are no-ops null).
+        this.monoWeaponId = null;
 
         // Prefer the frozen plan passed by the Loadout scene; otherwise build one
         // from the persisted draft so dev entry (SpawnTuner) never crashes (§10.2).
@@ -234,6 +257,12 @@ export class Game extends Scene {
         // Apply permanent blueprints
         BlueprintSystem.applyToGame(this);
 
+        // Reset fog modifier accumulators each run (scene instances are reused).
+        // These are written by the RunModifierSink during applyExpedition() /
+        // applyRunModifiers() below and consumed when FogSystem is constructed.
+        this.pendingRevealRadiusMult = 1;
+        this.forceFogEnabled = false;
+
         // Apply the frozen Expedition plan: perks, risk modifiers, supplies, and
         // assigned-survivor perks (§8). Reuses the existing stat-mutation path via
         // makeRunModifierSink(); only enemy/vision/medkit hooks are new.
@@ -265,9 +294,48 @@ export class Game extends Scene {
             this.activeModifiers = acceptedOffer?.modifiers ?? [];
             this.applyRunModifiers();
         }
+        // Mono-Weapon (Specialist) mode (docs/specs/mono-weapon-mission-mode.md §7.1).
+        // Resolve + install the locked weapon AFTER the mission and any recon
+        // carry-state are applied, so installMonoWeapon runs LAST and rebuilds
+        // this.weapons — dominating the basic/Demolitionist/starting/carried grants.
+        // No-op (monoWeaponId stays null) for missions without the opt-in flag.
+        this.resolveMonoWeapon();
         this.runId = `run_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
         this.missionSystem = new MissionSystem(this, this.activeMission);
         this.events.on('mission_complete', this.handleMissionComplete, this);
+
+        // Fog of War (docs/specs/fog-of-war.md). Fog is ON BY DEFAULT: every run
+        // builds FogSystem UNLESS the mission opts out (fog.enabled === false) or is
+        // an easy mission (difficulty <= EASY_OPTOUT_MAX_DIFFICULTY). An explicit
+        // fog.enabled === true or the VEIL risk modifier always force it on. The
+        // reveal radius folds in any SCANNER/VEIL multiplier from the RunModifierSink.
+        const fogCfg = this.activeMission.fog;
+        const isEasyMission =
+            (this.activeMission.difficulty ?? 99) <= GameConfig.FOG.EASY_OPTOUT_MAX_DIFFICULTY;
+        const fogOn =
+            this.forceFogEnabled ||
+            fogCfg?.enabled === true ||
+            (fogCfg?.enabled !== false && !isEasyMission);
+        if (fogOn) {
+            const baseRadius = fogCfg?.revealRadius ?? GameConfig.FOG.REVEAL_RADIUS;
+            this.fogSystem = new FogSystem(this, {
+                revealRadius: baseRadius * this.pendingRevealRadiusMult,
+                blackoutStates: fogCfg?.blackoutStates ?? [],
+            });
+        }
+        // Light Sources (docs/specs/fog-of-war-light-sources.md). Lights are ALWAYS
+        // generated as part of arena/map setup (a procedural layout — streetlights,
+        // trashcan fires, one carryable), plus any mission-authored lights appended.
+        // They register as fog reveal contributors when fog is on, and otherwise
+        // render as cosmetic glows (registration is guarded inside LightSystem).
+        const generatedLights = LightSystem.generateMapLayout(
+            GameConfig.WORLD.WIDTH,
+            GameConfig.WORLD.HEIGHT,
+            this.player.x,
+            this.player.y,
+        );
+        const missionLights = this.activeMission.lights ?? [];
+        this.lightSystem = new LightSystem(this, [...generatedLights, ...missionLights], this.fogSystem);
         // SLAY_BOSS may request an early boss spawn for a "boss rush" variant.
         const cond = this.activeMission.condition;
         if (cond.kind === MissionConditionKind.SLAY_BOSS && cond.forceEarlySpawnAtSeconds !== undefined) {
@@ -438,6 +506,11 @@ export class Game extends Scene {
 
         // Create UI
         this.gameUI = new GameUI(this);
+        // Persistent Specialist HUD chip (docs/specs/mono-weapon-mission-mode.md §6.3):
+        // a player who never sees a new-weapon card still understands the lock.
+        if (this.monoWeaponId !== null) {
+            this.gameUI.showSpecialistWeapon(this.monoWeaponName());
+        }
 
         // Launch the PauseMenu scene
         this.scene.launch(SceneKey.PauseMenu);
@@ -473,6 +546,10 @@ export class Game extends Scene {
             if (!this.scene.isActive()) { return; }
             this.isEliteIntro = true;
             this.physics.world.pause();
+
+            // Fog: punch a hole around the elite for the duration of the intro so
+            // the cinematic frames the threat, not shroud (§6.3).
+            this.fogSystem?.addTimedReveal({ x: elite.x, y: elite.y, radius: 480, durationMs: 6500 });
 
             const cam = this.cameras.main;
             const prevZoom = cam.zoom;
@@ -530,6 +607,8 @@ export class Game extends Scene {
             const prevZoom = cam.zoom;
             const cx = elites.reduce((s, e) => s + e.x, 0) / elites.length;
             const cy = elites.reduce((s, e) => s + e.y, 0) / elites.length;
+            // Fog: light the whole group's centroid for the intro (§6.3).
+            this.fogSystem?.addTimedReveal({ x: cx, y: cy, radius: 560, durationMs: 6500 });
             cam.stopFollow();
             cam.pan(cx, cy, 350, 'Sine.easeInOut');
             cam.zoomTo(elites.length > 1 ? 1.0 : 1.5, 350);
@@ -572,6 +651,9 @@ export class Game extends Scene {
             if (!this.scene.isActive()) { return; }
             this.isEliteIntro = true; // reuse intro flag to pause updates
             this.physics.world.pause();
+
+            // Fog: clear a wide bubble around the boss for the reveal (§6.3).
+            this.fogSystem?.addTimedReveal({ x: boss.x, y: boss.y, radius: 620, durationMs: 7500 });
 
             const cam = this.cameras.main;
             const prevZoom = cam.zoom;
@@ -700,7 +782,12 @@ export class Game extends Scene {
 
         // Skip the rest of the update if the game is paused or during elite intro
         if (this.scene.isPaused()) return;
-        if (this.isEliteIntro) return;
+        if (this.isEliteIntro) {
+            // Keep the fog rendering through the cinematic so the panned-to elite/
+            // boss (which seeded a timed reveal) is lit, not staring at shroud.
+            this.fogSystem?.update(this.game.loop.delta);
+            return;
+        }
 
         // Expedition medkit charge: press Q to spend a charge and heal (§8).
         if (this.medkitKey && Phaser.Input.Keyboard.JustDown(this.medkitKey)) {
@@ -738,6 +825,14 @@ export class Game extends Scene {
 
         // Update player movement with both keyboard and touch input
         this.player.update(this.cursors, this.wasdKeys, this.initialTouchPoint, this.currentTouchPoint);
+
+        // Advance light sources (cone facing, carried-light follow, flicker, input)
+        // BEFORE the fog so the contributors they own are current this frame.
+        this.lightSystem?.update(this.game.loop.delta);
+
+        // Advance the fog reveal (player + light + timed contributors, blackout)
+        // right after the player moves so the lantern tracks with zero lag.
+        this.fogSystem?.update(this.game.loop.delta);
 
         // Update weapons (automatic firing)
         this.weaponSystem.update();
@@ -777,6 +872,24 @@ export class Game extends Scene {
                 this.missionSystem.getProgress(),
                 this.activeMission.name,
                 this.missionSystem.getDetailLabel()
+            );
+        }
+
+        // Fog objective beacon (§5.2): a screen-edge arrow toward the active
+        // spatial objective, only while fog is on. Extraction zone (if armed)
+        // takes precedence over the mission's HOLD_ZONE; null hides the beacon.
+        if (this.fogSystem) {
+            let zoneTarget: WorldPoint | null = null;
+            if (this.extractionSystem?.isActive()) {
+                zoneTarget = this.extractionSystem.getZone();
+            } else {
+                zoneTarget = this.missionSystem?.getZoneTarget() ?? null;
+            }
+            this.gameUI.updateObjectiveBeacon(
+                zoneTarget,
+                this.player.x,
+                this.player.y,
+                this.fogSystem.getEffectivePlayerRadius()
             );
         }
         // Skill cooldown HUD + mobile button feedback
@@ -860,7 +973,46 @@ export class Game extends Scene {
             if (def.tier === WeaponUnlockTier.STARTER) { excluded.add(def.id); continue; }
             if (!isWeaponUnlocked(def)) excluded.add(def.id);
         }
+        // Mono-Weapon (Specialist) mode (docs/specs/mono-weapon-mission-mode.md §7.1).
+        // When the run is locked to one weapon, exclude every OTHER catalog weapon so
+        // neither level-up draws (Game.ts level-up) nor relic-chest top-ups (both share
+        // this set) can ever surface a new weapon. The specialist's own id is left in,
+        // so its repeatable upgrade card still appears. monoWeaponId is null on normal
+        // missions, so this whole block is a no-op there (zero behavior change).
+        if (this.monoWeaponId !== null) {
+            for (const def of WEAPON_CATALOG) {
+                if (def.id !== this.monoWeaponId) excluded.add(def.id);
+            }
+        }
         return excluded;
+    }
+
+    /**
+     * Mono-Weapon (Specialist) resolution + install (§4 resolution order). Reads the
+     * active mission's `monoWeapon` opt-in: fixed `weaponId` first, else a random pick
+     * from `weaponPool` (playerChoice is deferred). Sets this.monoWeaponId (which arms
+     * the pool filter + HUD chip + banner) and rebuilds the loadout via
+     * WeaponSystem.installMonoWeapon. No-op when the mission doesn't opt in.
+     */
+    private resolveMonoWeapon(): void {
+        const cfg = this.activeMission?.monoWeapon;
+        if (!cfg?.enabled) return;
+        // weaponId fixed (themed), else random-from-pool. '' / undefined => basic mono.
+        let resolved: string | undefined = cfg.weaponId;
+        if (resolved === undefined && cfg.weaponPool && cfg.weaponPool.length > 0) {
+            resolved = Phaser.Utils.Array.GetRandom(cfg.weaponPool);
+        }
+        const weaponId = resolved ?? '';        // '' = lock to the basic peashooter
+        const replaceBasic = cfg.replaceBasic !== false; // default true
+        this.monoWeaponId = weaponId;
+        this.weaponSystem.installMonoWeapon(weaponId, replaceBasic);
+    }
+
+    /** Display name of the locked specialist weapon for the HUD chip / banner. A
+     *  basic-weapon-only mono (monoWeaponId === '') reads as 'Basic'. */
+    private monoWeaponName(): string {
+        if (!this.monoWeaponId) return 'Basic';
+        return getWeaponDef(this.monoWeaponId)?.name ?? 'Basic';
     }
 
     public getCursors(): Phaser.Types.Input.Keyboard.CursorKeys {
@@ -879,6 +1031,12 @@ export class Game extends Scene {
     // Expose player for typed access from entities
     public getPlayer(): Player {
         return this.player;
+    }
+
+    // Whether fog of war is active on this run. Drives fog-gated content such as
+    // the FLARE pickup (Enemy.dropPickup only offers flares when this is true).
+    public isFogActive(): boolean {
+        return this.fogSystem != null;
     }
 
     // Expose relic system for upgrade/relic effects
@@ -973,6 +1131,20 @@ export class Game extends Scene {
             setVision: (m) => {
                 // Zoom out (>1) = wider view; zoom in (<1) = fog/restricted view.
                 this.cameras.main.setZoom(1 / Math.max(0.25, m));
+            },
+            // Fog of War hooks (§4.4). SCANNER/VEIL repoint here. Accumulated now
+            // and consumed when FogSystem is constructed (it may not exist yet, and
+            // applyExpedition runs before the mission is resolved). If fog never
+            // ends up enabled these are inert — non-fog runs stay unchanged.
+            setFog: (enabled) => {
+                this.forceFogEnabled = this.forceFogEnabled || enabled;
+            },
+            setRevealRadius: (m) => {
+                this.pendingRevealRadiusMult *= m;
+                // If FogSystem already exists (mid-run adjustment), apply live.
+                this.fogSystem?.setRevealRadius(
+                    (this.activeMission?.fog?.revealRadius ?? GameConfig.FOG.REVEAL_RADIUS) * this.pendingRevealRadiusMult
+                );
             },
         };
     }
@@ -1412,8 +1584,14 @@ export class Game extends Scene {
 
     private showMissionBanner(): void {
         const cam = this.cameras.main;
+        // Mono-Weapon (Specialist) mode: append a WEAPON LOCKED line so the lock is
+        // unmistakable from second one (docs/specs/mono-weapon-mission-mode.md §6.2).
+        let bannerText = `OBJECTIVE\n${this.activeMission.name}\n${this.activeMission.description}`;
+        if (this.monoWeaponId !== null) {
+            bannerText += `\nWEAPON LOCKED: ${this.monoWeaponName()}`;
+        }
         const banner = this.add.text(cam.width / 2, cam.height * 0.28,
-            `OBJECTIVE\n${this.activeMission.name}\n${this.activeMission.description}`, {
+            bannerText, {
                 fontFamily: 'Arial Black', fontSize: '24px', color: '#00ffff',
                 stroke: '#000000', strokeThickness: 6, align: 'center',
                 wordWrap: { width: Math.min(640, cam.width * 0.85) }
@@ -1490,6 +1668,34 @@ export class Game extends Scene {
                 case PickupType.AIRSTRIKE:
                     this.triggerAirstrike(pickup.x, pickup.y);
                     break;
+                case PickupType.FLARE: {
+                    // Blow the fog far back for a few seconds (the actual reveal),
+                    // then pair a warm cosmetic glow so the area reads as LIT.
+                    // Both systems are guarded — a non-fog run won't even drop a
+                    // flare, but the optional chaining keeps it crash-safe.
+                    const flare = GameConfig.FLARE;
+                    this.fogSystem?.addTimedReveal({
+                        x: player.x,
+                        y: player.y,
+                        radius: flare.REVEAL_RADIUS,
+                        durationMs: flare.REVEAL_DURATION_MS,
+                        fadeMs: flare.REVEAL_FADE_MS,
+                    });
+                    this.lightSystem?.flashGlow(
+                        player.x,
+                        player.y,
+                        flare.REVEAL_RADIUS,
+                        flare.TINT,
+                        flare.GLOW_DURATION_MS
+                    );
+                    this.showFloatingText(
+                        "FLARE!",
+                        player.x,
+                        player.y - 20,
+                        flare.TINT
+                    );
+                    break;
+                }
             }
 
             // Notify the mission system (COLLECT_DROPS) that a pickup was collected.
@@ -1764,6 +1970,26 @@ export class Game extends Scene {
                     const bx = targetX + Math.cos(angle) * dist;
                     const by = targetY + Math.sin(angle) * dist;
                     this.createExplosionEffect(bx, by, BLAST_RADIUS_MULTIPLIER);
+
+                    // Briefly light up the crater: peel the fog back around the
+                    // blast and pair a warm cosmetic glow so it reads as a
+                    // fire-lit crater, not merely "unfogged". Both systems are
+                    // guarded — a non-fog mission behaves exactly as before.
+                    const air = GameConfig.AIRSTRIKE;
+                    this.fogSystem?.addTimedReveal({
+                        x: bx,
+                        y: by,
+                        radius: air.IMPACT_LIGHT_RADIUS,
+                        durationMs: air.IMPACT_LIGHT_DURATION_MS,
+                        fadeMs: air.IMPACT_LIGHT_FADE_MS,
+                    });
+                    this.lightSystem?.flashGlow(
+                        bx,
+                        by,
+                        air.IMPACT_LIGHT_RADIUS,
+                        air.IMPACT_LIGHT_TINT,
+                        air.IMPACT_LIGHT_DURATION_MS
+                    );
                 });
             }
 
@@ -1835,6 +2061,8 @@ export class Game extends Scene {
         // which re-arms the normal spawn timers, so it must run before
         // enemySpawnSystem.destroy() finally kills them (else they'd leak).
         this.extractionSystem?.destroy();
+        this.lightSystem?.destroy();
+        this.fogSystem?.destroy();
         this.enemySpawnSystem?.destroy();
         this.weaponSystem?.destroy();
         this.missionSystem?.destroy();
