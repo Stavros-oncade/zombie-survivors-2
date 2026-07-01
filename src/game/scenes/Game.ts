@@ -31,6 +31,7 @@ import { fadeIn, FADE_NIGHT } from "../utils/transition";
 import { BossEnemy } from "../entities/BossEnemy";
 import { MissionSystem } from "../systems/MissionSystem";
 import { ExtractionSystem } from "../systems/ExtractionSystem";
+import { SupplyCacheSystem } from "../systems/SupplyCacheSystem";
 import { FogSystem } from "../systems/FogSystem";
 import { LightSystem } from "../systems/LightSystem";
 import { BurnSystem } from "../systems/BurnSystem";
@@ -86,6 +87,11 @@ export class Game extends Scene {
     // Optional extraction-end phase. Constructed lazily in beginExtraction() when a
     // mission with `extraction.enabled` completes its primary objective.
     private extractionSystem?: ExtractionSystem;
+    // Optional Search & Retrieve supply caches (docs/specs/search-and-retrieve-
+    // supply-caches.md). Constructed in create() ONLY when the active mission opts
+    // in (Mission.supplyCache.enabled); otherwise undefined and the run is
+    // byte-for-byte unchanged. Mutually exclusive with extraction? for now.
+    private supplyCacheSystem?: SupplyCacheSystem;
     // Optional Fog of War (docs/specs/fog-of-war.md). Constructed in create() ONLY
     // when the active mission opts in (Mission.fog) or a fog risk-modifier forces
     // it; otherwise undefined and the run is byte-for-byte unchanged.
@@ -328,6 +334,18 @@ export class Game extends Scene {
         this.runId = `run_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
         this.missionSystem = new MissionSystem(this, this.activeMission);
         this.events.on('mission_complete', this.handleMissionComplete, this);
+
+        // Search & Retrieve supply caches (docs/specs/search-and-retrieve-supply-
+        // caches.md). Locked decision: do not combine with Extraction yet — Job
+        // Board generation can't produce this combo (JobTemplate has no extraction?
+        // field), but hand-authored Missions.ts entries could in theory, so guard
+        // defensively rather than constructing both systems.
+        if (this.activeMission.supplyCache?.enabled && this.activeMission.extraction?.enabled) {
+            console.warn(`[Game] Mission '${this.activeMission.id}' sets both supplyCache and extraction; caches disabled (mutually exclusive for now).`);
+        } else if (this.activeMission.supplyCache?.enabled) {
+            this.supplyCacheSystem = new SupplyCacheSystem(this, this.activeMission, this.player.x, this.player.y);
+            this.events.on('supply_cache_retrieved', this.onSupplyCacheRetrieved, this);
+        }
 
         // Fog of War (docs/specs/fog-of-war.md). Fog is ON BY DEFAULT: every run
         // builds FogSystem UNLESS the mission opts out (fog.enabled === false) or is
@@ -865,6 +883,15 @@ export class Game extends Scene {
             );
         }
 
+        // Advance Search & Retrieve supply caches (channel timers + visuals).
+        if (this.supplyCacheSystem && !this.runEnded) {
+            this.supplyCacheSystem.update(
+                this.game.loop.delta / 1000,
+                this.player.x,
+                this.player.y
+            );
+        }
+
         // Update player movement with both keyboard and touch input
         this.player.update(this.cursors, this.wasdKeys, this.initialTouchPoint, this.currentTouchPoint);
 
@@ -883,6 +910,10 @@ export class Game extends Scene {
         // Advance the fog reveal (player + light + timed contributors, blackout)
         // right after the player moves so the lantern tracks with zero lag.
         this.fogSystem?.update(this.game.loop.delta);
+
+        // Search & Retrieve: suppress weapon fire while the player is channeling a
+        // supply cache (the spec's core vulnerability mechanic).
+        this.weaponSystem.setFireSuppressed(this.supplyCacheSystem?.isSearching() ?? false);
 
         // Update weapons (automatic firing)
         this.weaponSystem.update();
@@ -942,6 +973,14 @@ export class Game extends Scene {
                 this.fogSystem.getEffectivePlayerRadius()
             );
         }
+
+        // Search & Retrieve cache beacon: a screen-edge arrow toward the nearest
+        // unretrieved cache, regardless of fog (no minimap exists in this game).
+        if (this.supplyCacheSystem) {
+            const cacheTarget = this.supplyCacheSystem.getNearestUnretrieved(this.player.x, this.player.y);
+            this.gameUI.updateCacheBeacon(cacheTarget, this.player.x, this.player.y);
+        }
+
         // Skill cooldown HUD + mobile button feedback
         if (this.skillSystem) {
             const total = this.skillSystem.getCooldownTotalMs();
@@ -1485,6 +1524,23 @@ export class Game extends Scene {
         });
     }
 
+    // Search & Retrieve: small toast on each cache retrieval (mirrors showExtractionBanner).
+    private onSupplyCacheRetrieved(payload: { retrieved: number; total: number }): void {
+        const cam = this.cameras.main;
+        const banner = this.add.text(cam.width / 2, cam.height * 0.22,
+            `SUPPLY RECOVERED (${payload.retrieved}/${payload.total})`, {
+                fontFamily: 'Arial Black', fontSize: '20px', color: '#9ccc65',
+                stroke: '#000000', strokeThickness: 5, align: 'center',
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
+        this.tweens.add({
+            targets: banner,
+            alpha: 0,
+            delay: 1800,
+            duration: 600,
+            onComplete: () => banner.destroy(),
+        });
+    }
+
     // GameOver with outcome:'win'. Guarded by runEnded so it fires at most once and
     // never races a death (death wins via Player.die's own isDead latch). Reached
     // either directly (non-extraction missions) or via extraction_complete.
@@ -1571,6 +1627,8 @@ export class Game extends Scene {
             xpGained: this.player.getXPGained(),
             levelReached: this.player.getStats().level,
             playTimeSeconds: playTime,
+            cachesRetrieved: this.supplyCacheSystem?.getRetrievedCount() ?? 0,
+            cachesTotal: this.supplyCacheSystem?.getTotalCount() ?? 0,
         });
     }
 
@@ -2137,6 +2195,7 @@ export class Game extends Scene {
         this.enemySpawnSystem?.destroy();
         this.weaponSystem?.destroy();
         this.missionSystem?.destroy();
+        this.supplyCacheSystem?.destroy();
         this.gameUI?.destroy();
 
         // Remove only this game's custom event listeners. We must NOT call
@@ -2157,6 +2216,7 @@ export class Game extends Scene {
         'mission_complete',
         'extraction_started',
         'extraction_complete',
+        'supply_cache_retrieved',
         'enemyKilled',
         'enemyKilledClassified',
         'player_level_up',

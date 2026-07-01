@@ -33,6 +33,13 @@ export class GameOver extends Scene
     runId: string | undefined = undefined;
     blueprintPointsAwarded: number = 0;
 
+    // Search & Retrieve (docs/specs/search-and-retrieve-supply-caches.md): caches
+    // physically retrieved during the run vs. total seeded. Scales the won mission's
+    // CampReward.food/water/medicine instead of auto-granting them. 0/0 for missions
+    // without supplyCache enabled (the scaling block below is a no-op in that case).
+    cachesRetrieved: number = 0;
+    cachesTotal: number = 0;
+
     // Expedition (§5/§6): reward scaling + assigned-survivor outcomes.
     rewardMultiplier: number = 1;
     onWinBonusPoints: number = 0;
@@ -73,7 +80,9 @@ export class GameOver extends Scene
         jobId?: string,
         zoneDifficulty?: number,
         reconPayout?: ReconPayout,
-        reconFailed?: boolean
+        reconFailed?: boolean,
+        cachesRetrieved?: number,
+        cachesTotal?: number
     })
     {
         // Reset transient state (scenes are reused across runs).
@@ -82,6 +91,8 @@ export class GameOver extends Scene
         this.missionId = undefined;
         this.runId = undefined;
         this.blueprintPointsAwarded = 0;
+        this.cachesRetrieved = 0;
+        this.cachesTotal = 0;
         this.rewardMultiplier = 1;
         this.onWinBonusPoints = 0;
         this.survivorOutcomes = [];
@@ -109,6 +120,8 @@ export class GameOver extends Scene
         if (data.jobId !== undefined) this.jobId = data.jobId;
         if (data.zoneDifficulty !== undefined) this.zoneDifficulty = data.zoneDifficulty;
         if (data.reconPayout !== undefined) this.reconPayout = data.reconPayout;
+        if (data.cachesRetrieved !== undefined) this.cachesRetrieved = data.cachesRetrieved;
+        if (data.cachesTotal !== undefined) this.cachesTotal = data.cachesTotal;
         this.cameFromZoneJob = !!(this.zoneId && this.jobId);
     }
 
@@ -139,24 +152,37 @@ export class GameOver extends Scene
             // CampReward bundle and so isn't covered by advanceCycle's own guard.
             const alreadyResolved = camp.getState().lastResolvedRunId === this.runId;
             const offer = JobBoardSystem.getAcceptedOffer();
-            if (isWin && offer) rewardSummary = JobBoardSystem.describeReward(offer.reward);
             let reward: CampReward | undefined;
             if (isWin) {
                 const baseReward = offer
                     ? offer.reward.camp
                     : (this.missionId ? resolveMission(this.missionId).reward : undefined);
-                // Apply Expedition risk-modifier reward scaling (§5): scale the
-                // blueprintPoints by rewardMultiplier and add any ON_WIN perk bonus.
-                // Other CampReward currencies are unaffected by risk scaling.
-                if (baseReward && (this.rewardMultiplier !== 1 || this.onWinBonusPoints > 0)) {
-                    const baseBP = baseReward.blueprintPoints ?? 0;
-                    reward = {
-                        ...baseReward,
-                        blueprintPoints: Math.round(baseBP * this.rewardMultiplier) + this.onWinBonusPoints,
-                    };
-                } else {
-                    reward = baseReward;
+                if (baseReward) {
+                    // ALWAYS copy — never mutate offer.reward.camp or the static
+                    // MISSIONS[i].reward object in place (resolveMission returns the
+                    // literal catalog entry, not a clone; mutating it would silently
+                    // shrink that mission's reward for the rest of the session).
+                    reward = { ...baseReward };
+                    // Apply Expedition risk-modifier reward scaling (§5): scale the
+                    // blueprintPoints by rewardMultiplier and add any ON_WIN perk bonus.
+                    // Other CampReward currencies are unaffected by risk scaling.
+                    if (this.rewardMultiplier !== 1 || this.onWinBonusPoints > 0) {
+                        reward.blueprintPoints = Math.round((reward.blueprintPoints ?? 0) * this.rewardMultiplier) + this.onWinBonusPoints;
+                    }
+                    // Search & Retrieve (docs/specs/search-and-retrieve-supply-caches.md):
+                    // scale cache-backed resources by the retrieval ratio instead of
+                    // auto-granting them. cachesTotal is 0 for non-cache missions, so
+                    // this is a no-op there.
+                    if (this.cachesTotal > 0) {
+                        const ratio = Math.max(0, Math.min(1, this.cachesRetrieved / this.cachesTotal));
+                        if (reward.food !== undefined) reward.food = Math.round(reward.food * ratio);
+                        if (reward.water !== undefined) reward.water = Math.round(reward.water * ratio);
+                        if (reward.medicine !== undefined) reward.medicine = Math.round(reward.medicine * ratio);
+                    }
                 }
+                // Reward summary text is built AFTER scaling so the win panel never
+                // shows a stale pre-retrieval number.
+                if (reward) rewardSummary = JobBoardSystem.describeReward({ camp: reward, campaignPoints: offer?.reward.campaignPoints });
                 // Campaign progression (4th currency) lives in its own system, not
                 // in CampReward — pay it here once, gated on win + first resolution.
                 if (!alreadyResolved && offer?.reward.campaignPoints) {
@@ -283,6 +309,15 @@ export class GameOver extends Scene
                 this.scene.get(SceneKey.Game).events.emit('current-scene-ready', this);
                 return;
             }
+        }
+
+        // Search & Retrieve: how many supply caches were physically retrieved.
+        if (this.cachesTotal > 0) {
+            const full = this.cachesRetrieved >= this.cachesTotal;
+            this.add.text(width / 2, height / 2 + yOffset * 1.5, `Caches retrieved: ${this.cachesRetrieved}/${this.cachesTotal}`, {
+                fontFamily: 'Arial', fontSize: 20, color: full ? '#9ccc65' : '#ffd9a0',
+                stroke: '#000000', strokeThickness: 4, align: 'center',
+            }).setOrigin(0.5).setDepth(100);
         }
 
         // Long Recon terminal summary (§12.4): nodes cleared + banked/salvaged payout.

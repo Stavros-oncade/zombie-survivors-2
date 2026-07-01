@@ -39,6 +39,9 @@ export interface JobTemplate {
    *  mission-mode.md). Copied verbatim onto the instantiated Mission so the run
    *  forces this weapon and locks the rest. Omitted ⇒ a normal draft run. */
   monoWeapon?: Mission['monoWeapon'];
+  /** Search & Retrieve supply caches (docs/specs/search-and-retrieve-supply-caches.md).
+   *  Copied verbatim onto the instantiated Mission, mirrors monoWeapon?. Omitted ⇒ no caches. */
+  supplyCache?: Mission['supplyCache'];
 }
 
 // ── shared modifier makers ───────────────────────────────────────────────
@@ -125,6 +128,7 @@ export const JOB_TEMPLATES: JobTemplate[] = [
     }),
     modifierTable: [modDensity, modScarcity, modTimeLimit],
     rewardEmphasis: { resources: 0.7, blueprints: 0.3 },
+    supplyCache: { enabled: true, count: 2 },
   },
   {
     id: 't_hold_perimeter',

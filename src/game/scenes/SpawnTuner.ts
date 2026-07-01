@@ -3,6 +3,9 @@ import { SpawningConfig } from '../systems/SpawningConfig';
 import { SpawnState } from '../types/GameTypes';
 import { SceneKey } from '../config/SceneKeys';
 import { transitionTo, fadeIn, FADE_NIGHT } from '../utils/transition';
+import { JobBoardSystem } from '../systems/JobBoardSystem';
+import { JOB_TEMPLATES } from '../config/JobTemplates';
+import { JobLaunchKind } from '../types/JobBoardTypes';
 
 export class SpawnTuner extends Scene {
   constructor() { super(SceneKey.SpawnTuner); }
@@ -135,6 +138,49 @@ export class SpawnTuner extends Scene {
     makeStateBtn('Ranged Pack', SpawnState.RANGED_PACK, w/2 + 65, sy);
     makeStateBtn('Carrier Pack', SpawnState.CARRIER_PACK, w/2 + 195, sy);
     makeStateBtn('Toxic Pack', SpawnState.TOXIC_PACK, w/2 + 325, sy);
+
+    // Job Board template launcher (debug). Force-generates + accepts an offer from
+    // any of the 12 authored templates (bypassing the normal random 3-offer board)
+    // and routes exactly like a real Job Board accept (JobBoard.ts:accept()), so
+    // the full reward/mission pipeline is exercised unchanged. Useful for testing
+    // template-specific features (e.g. Search & Retrieve's t_supply_run caches)
+    // without rerolling for them.
+    this.add.text(w/2, 495, 'Job Board Templates (Debug)', {
+      fontFamily: 'Arial Black', fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 4
+    }).setOrigin(0.5);
+
+    const launchTemplate = (templateId: string) => {
+      const offer = JobBoardSystem.debugForceAcceptTemplate(templateId);
+      if (!offer) return;
+      SpawningConfig.getInstance().reset();
+      switch (offer.launch.kind) {
+        case JobLaunchKind.GAME_RUN:
+          transitionTo(this, SceneKey.Loadout);
+          break;
+        case JobLaunchKind.LONG_RECON:
+          transitionTo(this, SceneKey.Loadout, { reconMode: true });
+          break;
+        case JobLaunchKind.CITY_RECLAMATION:
+          transitionTo(this, SceneKey.CityReclamation);
+          break;
+      }
+    };
+
+    const cols = 4;
+    const colXs = [w/2 - 330, w/2 - 110, w/2 + 110, w/2 + 330];
+    const rowYs = [524, 552, 580];
+    JOB_TEMPLATES.forEach((tmpl, i) => {
+      const x = colXs[i % cols];
+      const y = rowYs[Math.floor(i / cols)];
+      const label = (tmpl.titlePool[0] ?? tmpl.id).slice(0, 18);
+      this.add.text(x, y, label, {
+        fontFamily: 'Arial', fontSize: '12px', color: '#ffffff', stroke: '#000000', strokeThickness: 2,
+        backgroundColor: '#333', padding: { x: 6, y: 4 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+        .on('pointerover', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffff00' }); })
+        .on('pointerout', function(this: Phaser.GameObjects.Text) { this.setStyle({ color: '#ffffff' }); })
+        .on('pointerdown', () => launchTemplate(tmpl.id));
+    });
 
     this.add.text(w/2, h - 100, 'Start Game', {
       fontFamily: 'Arial Black', fontSize: '32px', color: '#ffffff', stroke: '#000000', strokeThickness: 6

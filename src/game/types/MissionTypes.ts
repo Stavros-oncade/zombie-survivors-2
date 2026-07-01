@@ -174,6 +174,12 @@ export interface Mission {
   // Constructed by LightSystem; mirrors the `fog?` opt-in. Missions without
   // lights (and with fog off) never construct LightSystem (zero change).
   lights?: LightDef[];
+  // Optional Search & Retrieve supply caches (docs/specs/search-and-retrieve-
+  // supply-caches.md). 1-3 physical caches are placed in the arena at run start;
+  // retrieved/total scales CampReward.food/water/medicine at GameOver instead of
+  // auto-granting them. Mirrors the extraction? opt-in. Locked: do not combine
+  // with extraction? yet (Game.ts guards this defensively at construction).
+  supplyCache?: { enabled: boolean; count?: number; radius?: number; searchSeconds?: number };
 }
 
 /** Live, per-run progress for the active mission. */

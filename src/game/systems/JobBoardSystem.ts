@@ -146,6 +146,28 @@ export class JobBoardSystem {
   }
 
   /**
+   * DEBUG ONLY (SpawnTuner): force-generate an offer from an arbitrary template by
+   * id, bypassing the normal random 3-offer board, and accept it. Splices the
+   * generated offer into the persisted board (slot 0) so getAcceptedOffer()'s
+   * lookup resolves it, then mirrors setAcceptedOffer's LoadoutManager sync — the
+   * rest of the run/reward pipeline (GameOver, CampSystem) is unchanged. Returns
+   * null if the template id doesn't exist.
+   */
+  static debugForceAcceptTemplate(templateId: string): JobOffer | null {
+    const tmpl = JOB_TEMPLATES.find((t) => t.id === templateId);
+    if (!tmpl) return null;
+    const s = this.getState();
+    const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+    const rng = mulberry32(seed);
+    const offer = this.instantiate(tmpl, rng, currentTier(), s.generation, 0);
+    s.offers[0] = offer;
+    s.acceptedOfferId = offer.id;
+    this.save(s);
+    LoadoutManager.getInstance().setMissionId(offer.mission.id);
+    return offer;
+  }
+
+  /**
    * Consume the board after a run resolves (win OR lose): generation++, fresh
    * seed, new 3 offers, rerolls reset, accept cleared (§4.3). Idempotent enough:
    * always advances; callers gate on the run actually being over.
@@ -250,6 +272,7 @@ export class JobBoardSystem {
       // Specialist (Mono-Weapon) jobs carry their lock on the template; copy it
       // onto the instantiated mission so the run forces that weapon (§7.2).
       monoWeapon: tmpl.monoWeapon,
+      supplyCache: tmpl.supplyCache,
     };
 
     const difficulty = this.computeDifficulty(mission, modifiers);
@@ -285,7 +308,13 @@ export class JobBoardSystem {
     let base = (mission.difficulty ?? this.estimateFromCondition(mission.condition)) * 10; // 10..50
     base *= this.targetScale(mission.condition); // 0.8..1.6
     const mod = this.modifierDifficulty(modifiers);
-    return Math.max(1, Math.min(100, Math.round(base + mod)));
+    // Search & Retrieve (docs/specs/search-and-retrieve-supply-caches.md): a flat
+    // bump comparable to one modifier's worth — standing still to channel a cache
+    // is itself a small extra risk against the still-active horde. supplyCache is a
+    // Mission-level flag, never a JobModifier, so SCARCITY's scoring path below is
+    // structurally incapable of touching cache count/value (locked decision).
+    const cacheBump = mission.supplyCache?.enabled ? 8 : 0;
+    return Math.max(1, Math.min(100, Math.round(base + mod + cacheBump)));
   }
 
   private static estimateFromCondition(c: MissionCondition): number {

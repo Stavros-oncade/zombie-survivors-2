@@ -21,6 +21,13 @@ export class GameUI {
     private static readonly BEACON_DEPTH = 1000; // HUD band, above the fog (500)
     private static readonly BEACON_EDGE_MARGIN = 48;
     private static readonly BEACON_COLOR = 0x66ddff;
+    // Search & Retrieve cache beacon (docs/specs/search-and-retrieve-supply-caches.md).
+    // A second, independent beacon (amber, distinct from the cyan objective beacon)
+    // pointing toward the nearest unretrieved cache. Gated on-screen rather than a
+    // fog reveal radius so it works with or without fog — there is no minimap.
+    private cacheBeaconArrow: Phaser.GameObjects.Graphics | null = null;
+    private cacheBeaconLabel: Phaser.GameObjects.Text | null = null;
+    private static readonly CACHE_BEACON_COLOR = 0xffaa33;
     // Mono-Weapon (Specialist) persistent HUD chip (mono-weapon-mission-mode.md §6.3).
     // Created lazily only on a Specialist run; non-mono runs never allocate it.
     private specialistChip: Phaser.GameObjects.Text | null = null;
@@ -256,6 +263,61 @@ export class GameUI {
         this.beaconLabel.setText(`${Math.round(dist)}m`).setVisible(true);
     }
 
+    /**
+     * Search & Retrieve cache beacon: a screen-edge directional arrow + distance
+     * label pointing toward the nearest unretrieved supply cache. Hidden when there
+     * is no target or the target is already within the camera viewport (on-screen),
+     * unlike updateObjectiveBeacon which gates on a fog reveal radius — caches need
+     * to be findable with or without fog, and this game has no minimap.
+     */
+    public updateCacheBeacon(target: WorldPoint | null, playerX: number, playerY: number): void {
+        const cam = this.scene.cameras.main;
+        const onScreen = !!target && cam.worldView.contains(target.x, target.y);
+        if (!target || onScreen) {
+            this.cacheBeaconArrow?.setVisible(false);
+            this.cacheBeaconLabel?.setVisible(false);
+            return;
+        }
+
+        if (!this.cacheBeaconArrow) {
+            this.cacheBeaconArrow = this.scene.add.graphics();
+            this.cacheBeaconArrow.setScrollFactor(0).setDepth(GameUI.BEACON_DEPTH);
+            this.cacheBeaconArrow.fillStyle(GameUI.CACHE_BEACON_COLOR, 0.95);
+            this.cacheBeaconArrow.lineStyle(2, 0x332200, 0.9);
+            this.cacheBeaconArrow.beginPath();
+            this.cacheBeaconArrow.moveTo(16, 0);
+            this.cacheBeaconArrow.lineTo(-10, -11);
+            this.cacheBeaconArrow.lineTo(-4, 0);
+            this.cacheBeaconArrow.lineTo(-10, 11);
+            this.cacheBeaconArrow.closePath();
+            this.cacheBeaconArrow.fillPath();
+            this.cacheBeaconArrow.strokePath();
+        }
+        if (!this.cacheBeaconLabel) {
+            this.cacheBeaconLabel = this.scene.add.text(0, 0, '', {
+                fontSize: '13px', color: '#ffe2b0', stroke: '#000000', strokeThickness: 3,
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(GameUI.BEACON_DEPTH);
+        }
+
+        const vw = cam.width;
+        const vh = cam.height;
+        const margin = GameUI.BEACON_EDGE_MARGIN;
+        const psx = (playerX - cam.worldView.x) * cam.zoom;
+        const psy = (playerY - cam.worldView.y) * cam.zoom;
+        const tsx = (target.x - cam.worldView.x) * cam.zoom;
+        const tsy = (target.y - cam.worldView.y) * cam.zoom;
+        const angle = Math.atan2(tsy - psy, tsx - psx);
+
+        const ox = Phaser.Math.Clamp(psx, margin, vw - margin);
+        const oy = Phaser.Math.Clamp(psy, margin, vh - margin);
+        const edge = GameUI.rayToRectEdge(ox, oy, angle, margin, margin, vw - margin, vh - margin);
+
+        this.cacheBeaconArrow.setPosition(edge.x, edge.y).setRotation(angle).setVisible(true);
+        const dist = Phaser.Math.Distance.Between(playerX, playerY, target.x, target.y);
+        this.cacheBeaconLabel.setPosition(edge.x - Math.cos(angle) * 26, edge.y - Math.sin(angle) * 26);
+        this.cacheBeaconLabel.setText(`${Math.round(dist)}m`).setVisible(true);
+    }
+
     /** Cast a ray from (ox,oy) at `ang` to the nearest edge of the given rect. */
     private static rayToRectEdge(
         ox: number, oy: number, ang: number,
@@ -306,6 +368,8 @@ export class GameUI {
         this.objectiveBar?.destroy();
         this.beaconArrow?.destroy();
         this.beaconLabel?.destroy();
+        this.cacheBeaconArrow?.destroy();
+        this.cacheBeaconLabel?.destroy();
     }
 
     // Getter for gameTime to make it accessible from outside

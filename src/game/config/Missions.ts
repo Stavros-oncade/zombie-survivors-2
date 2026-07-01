@@ -119,6 +119,19 @@ export const MISSIONS: Mission[] = [
     },
     reward: { blueprintPoints: 4 },
   },
+  {
+    id: 'm_supply_cache_demo',
+    name: 'Search & Retrieve: Demo',
+    description: 'Kill 100 zombies. Recover the supply caches scattered in the arena.',
+    difficulty: 2,
+    condition: { kind: MissionConditionKind.KILL_COUNT, target: 100 },
+    reward: { blueprintPoints: 2, food: 10, water: 6, medicine: 4 },
+    // Search & Retrieve (docs/specs/search-and-retrieve-supply-caches.md). Manual
+    // QA only — no in-game mission picker exists outside the Job Board; reach this
+    // via LoadoutManager.getInstance().setMissionId('m_supply_cache_demo') in the
+    // browser console before starting a run with no offer accepted.
+    supplyCache: { enabled: true, count: 3 },
+  },
   // ── Mono-Weapon "Specialist" missions (docs/specs/mono-weapon-mission-mode.md) ──
   // Each locks the whole run to one curated weapon, pairing the weapon archetype with
   // the win condition (§5.3): a CROWD-CLEAR weapon on a horde/extraction objective, a

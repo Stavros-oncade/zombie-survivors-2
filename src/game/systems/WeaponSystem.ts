@@ -14,6 +14,10 @@ export class WeaponSystem {
     private player: Player;
     private weapons: IWeapon[];
     private enemies: Phaser.Physics.Arcade.Group;
+    // Search & Retrieve (docs/specs/search-and-retrieve-supply-caches.md): suppresses
+    // only the fire() call while channeling a cache. update() (movement-only, e.g.
+    // summon entities) stays ungated per the spec's explicit recommendation.
+    private fireSuppressed = false;
 
     constructor(scene: Scene, player: Player, enemies: Phaser.Physics.Arcade.Group) {
         this.scene = scene;
@@ -66,11 +70,15 @@ export class WeaponSystem {
         // Get enemies that are actually in the scene
         const activeEnemies = this.enemies.getChildren().filter(enemy => enemy.active) as Enemy[];
 
-        if (activeEnemies.length > 0) {
+        if (activeEnemies.length > 0 && !this.fireSuppressed) {
             this.weapons.forEach(weapon => {
                 weapon.fire(this.scene, this.player, activeEnemies);
             });
         }
+    }
+
+    public setFireSuppressed(suppressed: boolean): void {
+        this.fireSuppressed = suppressed;
     }
 
     public destroy(): void {
