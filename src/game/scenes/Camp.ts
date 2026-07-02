@@ -68,6 +68,9 @@ export class Camp extends Scene {
 
   // Mobile contextual action buttons (rebuilt when the active zone changes).
   private actionButtons: Phaser.GameObjects.Container[] = [];
+  // Manual tap dispatch for mobile buttons — see makeButton()'s comment for why
+  // this bypasses Phaser's own Container hit-testing.
+  private tapTargets: { container: Phaser.GameObjects.Container; radius: number; onTap: () => void }[] = [];
 
   init(data?: { showArrival?: boolean }) {
     this.showArrival = !!data?.showArrival;
@@ -386,6 +389,7 @@ export class Camp extends Scene {
   private refreshActionButtons(zone: CampZone | null) {
     if (!this.isMobile) return;
     this.actionButtons.forEach(b => b.destroy());
+    this.tapTargets = this.tapTargets.filter(t => !this.actionButtons.includes(t.container));
     this.actionButtons = [];
     if (!zone) return;
     const cam = this.cameras.main;
@@ -403,17 +407,31 @@ export class Camp extends Scene {
     g.strokeCircle(0, 0, 42);
     const t = this.add.text(0, 0, label, { fontSize: '14px', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5);
     const c = this.add.container(x, y, [g, t]).setScrollFactor(0).setDepth(6000).setSize(84, 84);
-    c.setInteractive(new Phaser.Geom.Circle(0, 0, 42), Phaser.Geom.Circle.Contains);
-    c.on('pointerdown', (_p: Phaser.Input.Pointer, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
-      e?.stopPropagation?.();
-      onTap();
-    });
+    // Deliberately NOT using c.setInteractive() + its own pointerdown here.
+    // Phaser's hit-test for a scrollFactor(0) Container doesn't correctly
+    // discount the camera's scroll once the follow-camera has moved away from
+    // the origin — the effective hit area silently drifts by the scroll
+    // amount, so taps on a real device (or here) land on the visible button
+    // but miss the (mis-transformed) hit area entirely. Dispatch taps manually
+    // instead (setupTouch()) using the raw screen-space pointer position
+    // against this button's own (already screen-space, scrollFactor 0) x/y.
+    this.tapTargets.push({ container: c, radius: 42, onTap });
     return c;
   }
 
   private setupTouch() {
-    // Touch-anywhere virtual joystick (the fixed buttons capture their own pointers).
+    // Touch-anywhere virtual joystick — EXCEPT when the tap lands on a fixed
+    // button (Dash / zone actions), checked here manually via raw screen-space
+    // distance (see makeButton()'s comment for why we can't rely on the
+    // button containers' own interactive hit test).
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      for (const t of this.tapTargets) {
+        if (!t.container.active) continue;
+        if (Phaser.Math.Distance.Between(pointer.x, pointer.y, t.container.x, t.container.y) <= t.radius) {
+          t.onTap();
+          return;
+        }
+      }
       this.initialTouchPoint = new Phaser.Math.Vector2(pointer.x, pointer.y);
       this.currentTouchPoint = new Phaser.Math.Vector2(pointer.x, pointer.y);
     });

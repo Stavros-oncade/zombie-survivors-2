@@ -15,6 +15,8 @@ import { FrostMineWeapon } from './FrostMineWeapon';
 import { RicochetDiscWeapon } from './RicochetDiscWeapon';
 import { PrismBeamWeapon } from './PrismBeamWeapon';
 import { VoidOrbWeapon } from './VoidOrbWeapon';
+import { SniperRifleWeapon } from './SniperRifleWeapon';
+import { InfernoBeamWeapon } from './InfernoBeamWeapon';
 
 const B = GameConstants.WEAPONS;
 
@@ -59,7 +61,8 @@ export const WEAPON_FACTORY: Record<string, WeaponFactoryEntry> = {
     weaponClass: TeslaArcWeapon,
     create: (s) => new TeslaArcWeapon(s, {
       damage: Math.round(B.BASIC_DAMAGE * 0.7), attackSpeed: B.BASIC_ATTACK_SPEED * 0.8,
-      chainCount: 3, chainRange: 180, level: 1,
+      // chainRange cut 33% (180 -> 120): chain hops travel a shorter distance.
+      chainCount: 3, chainRange: 120, level: 1,
     }),
   },
   sentry_drone: {
@@ -85,6 +88,20 @@ export const WEAPON_FACTORY: Record<string, WeaponFactoryEntry> = {
     weaponClass: VoidOrbWeapon,
     create: (s) => new VoidOrbWeapon(s, {
       damage: Math.round(B.BASIC_DAMAGE * 1.0), attackSpeed: 0.4, range: 150, ticks: 5, level: 1,
+    }),
+  },
+  sniper_rifle: {
+    weaponClass: SniperRifleWeapon,
+    create: (s) => new SniperRifleWeapon(s, {
+      damage: B.BASIC_DAMAGE * 5, attackSpeed: 0.35,
+      projectileSpeed: B.BASIC_PROJECTILE_SPEED * 2.5, range: 900, level: 1,
+    }),
+  },
+  inferno_beam: {
+    weaponClass: InfernoBeamWeapon,
+    create: (s) => new InfernoBeamWeapon(s, {
+      // attackSpeed: fires 75% less often than the original 5 ticks/sec.
+      damage: Math.round(B.BASIC_DAMAGE * 0.25), attackSpeed: 1.25, beamRange: 220, level: 1,
     }),
   },
 };

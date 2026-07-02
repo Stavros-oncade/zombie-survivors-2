@@ -35,6 +35,10 @@ export class Pickup extends Phaser.Physics.Arcade.Sprite {
                 // Reuse the bomb texture; a bright red/orange tint (initialize())
                 // makes it read as a flare marker on the map.
                 return 'pickup_bomb';
+            case PickupType.FIRE_RING:
+                // Reuse the bomb texture; a distinct orange tint (initialize())
+                // makes it read as its own pickup.
+                return 'pickup_bomb';
             default:
                 return 'pickup_health';
         }
@@ -71,6 +75,10 @@ export class Pickup extends Phaser.Physics.Arcade.Sprite {
             case PickupType.FLARE:
                 this.value = 0; // Effect is the timed fog reveal, handled in Game
                 this.setTint(GameConfig.FLARE.TINT); // Bright red/orange flare marker
+                break;
+            case PickupType.FIRE_RING:
+                this.value = 0; // Effect is the expanding ignite pulse, handled in Game
+                this.setTint(GameConfig.FIRE_RING.TINT);
                 break;
         }
 

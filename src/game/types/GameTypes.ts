@@ -69,7 +69,8 @@ export enum PickupType {
     EXPERIENCE = 'experience',
     BOMB = 'bomb',
     AIRSTRIKE = 'airstrike',
-    FLARE = 'flare'
+    FLARE = 'flare',
+    FIRE_RING = 'fire_ring'
 }
 
 export enum RelicRarity {
@@ -133,5 +134,6 @@ export enum UpgradeId {
     EXPLOSIVE_BURST = 'explosive_burst',
     ORBITAL_SHIELD = 'orbital_shield',
     PROJECTILE_SPEED = 'projectile_speed',
-    SKILL_MASTERY = 'skill_mastery'
+    SKILL_MASTERY = 'skill_mastery',
+    LIFESTEAL = 'lifesteal'
 }

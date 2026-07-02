@@ -376,6 +376,22 @@
       ]
     },
     {
+      "id": "proj_sniper",
+      "type": "image",
+      "category": "projectile",
+      "status": "missing",
+      "urls": {
+        "webp": "weapons/proj_sniper.webp"
+      },
+      "sizeKB": 8,
+      "required": false,
+      "description": "Sniper Rifle round: elongated brass tracer.",
+      "guidelines": [
+        "Max 8 KB.",
+        "24–32 px wide, authored pointing right (0 rotation)."
+      ]
+    },
+    {
       "id": "vfx_gravity_well",
       "type": "image",
       "category": "vfx",

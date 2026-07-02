@@ -68,6 +68,14 @@ export class UpgradeSystem {
                     sc.getSkillSystem().levelUp();
                 }
             }
+        },
+        {
+            id: UpgradeId.LIFESTEAL,
+            name: 'Vampiric Rounds',
+            description: 'Heal for 5% of all damage you deal',
+            effect: (player: Player) => {
+                player.enableLifesteal(0.05);
+            }
         }
     ];
 

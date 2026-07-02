@@ -166,6 +166,19 @@ export const GameConfig = {
         TINT: 0xff5a2b,
     },
 
+    // ─────────────────────────── Fire Ring Pickup ───────────────────────────
+    // A single expanding ring pulse: on collect, a growing radius ignites any
+    // enemy it catches (BurnSystem.ignite) — no direct damage, the DoT is the
+    // whole effect. Reuses the 'pickup_bomb' texture with a distinct tint, same
+    // as AIRSTRIKE/FLARE. Constants over literals per AGENTS.md.
+    FIRE_RING: {
+        MAX_RADIUS: 220,
+        DURATION_MS: 900,
+        // Distinct from FLARE's TINT (0xff5a2b) and the AIRSTRIKE pickup tint
+        // (0x66ccff) so the ground sprite reads as its own pickup.
+        TINT: 0xff9500,
+    },
+
     // ─────────────────────────── Airstrike Impact Light ───────────────────────────
     // See docs/specs/fog-of-war.md (stage 4). Each airstrike bomb briefly lights
     // up the area around its impact so the explosions read as glowing, fire-lit

@@ -14,7 +14,18 @@ export const GameConstants = {
         PICKUP_DROP_RATE: 0.15,
         DOUBLE_SPEED_CHANCE: 0.02,        // 2% rare spawn
         DOUBLE_SPEED_MULTIPLIER: 2,       // 2x base type speed
-        DOUBLE_SPEED_OUTLINE_COLOR: 0xff0000
+        DOUBLE_SPEED_OUTLINE_COLOR: 0xff0000,
+        // Rare "erratic" variant — orthogonal to base type, mutually exclusive
+        // with double-speed (see EnemySpawnSystem.addEnemyOfType). Movement is a
+        // discrete tick-based roll rather than per-frame so it reads as lurching
+        // rather than jittery: each ERRATIC_TICK_MS, 80% continue straight, 10%
+        // turn ~90 degrees, 10% stop moving for ERRATIC_STOP_TICKS ticks.
+        ERRATIC_CHANCE: 0.02,
+        ERRATIC_TICK_MS: 250,
+        ERRATIC_STOP_TICKS: 10,
+        ERRATIC_CONTINUE_CHANCE: 0.8,
+        ERRATIC_TURN_CHANCE: 0.1,
+        ERRATIC_OUTLINE_COLOR: 0x9b59ff
     },
     WEAPONS: {
         BASIC_DAMAGE: 20,

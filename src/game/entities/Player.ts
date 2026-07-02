@@ -24,6 +24,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     private immunityTimer: Phaser.Time.TimerEvent | null = null;
     private readonly IMMUNITY_DURATION: number = 100; // 100ms immunity
     private isDead: boolean = false;
+    // Lifesteal (Vampiric Rounds upgrade): fraction of damage dealt to enemies
+    // that heals the player. Additive per pick, capped so it can't trivialize
+    // damage. Subscribes to the 'damageDealt' event Enemy.takeDamage() emits —
+    // covers weapon hits, explosion damage, AND burn DoT ticks (all player-caused).
+    private lifestealPct: number = 0;
     // Last NON-ZERO movement heading (normalized). Held when the player stops so
     // the flashlight cone (LightSystem) keeps its heading instead of snapping to
     // zero (light-sources doc §3.3 / §6.4). Defaults to "facing right".
@@ -54,6 +59,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
         // Enable health regeneration by default
         //this.enableHealthRegeneration(0.01, 1000); // 1% health per second
+
+        this.scene.events.on('damageDealt', this.onDamageDealt, this);
     }
 
     public enablePhysics(): void {
@@ -345,6 +352,20 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         });
     }
 
+    /** Additive per pick, capped at 40% so a stacked lifesteal build can't trivialize damage. */
+    public enableLifesteal(pct: number): void {
+        this.lifestealPct = Math.min(0.4, this.lifestealPct + pct);
+    }
+
+    public getLifestealPct(): number {
+        return this.lifestealPct;
+    }
+
+    private onDamageDealt = (dealt: number): void => {
+        if (!this.active || this.lifestealPct <= 0) return;
+        this.heal(dealt * this.lifestealPct);
+    };
+
     public enableHealthRegeneration(percentPerTick: number, intervalMs: number): void {
         // Clear any existing regeneration timer
         if (this.healthRegenTimer) {
@@ -381,7 +402,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
             this.immunityTimer.destroy();
             this.immunityTimer = null;
         }
-        
+
+        // Guard: on a full scene shutdown, Phaser may have already nulled
+        // `this.scene` by the time this cascades down from UpdateList.shutdown.
+        if (this.scene) this.scene.events.off('damageDealt', this.onDamageDealt, this);
+
         super.destroy(fromScene);
     }
 

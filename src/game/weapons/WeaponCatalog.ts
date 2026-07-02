@@ -81,6 +81,16 @@ export const WEAPON_CATALOG: WeaponDef[] = [
     tier: WeaponUnlockTier.CITY_SPECIAL, iconKey: 'upgrade_voidorb',
     requiresCityBlueprintId: 'city_bp_void_core',
   },
+  {
+    id: 'sniper_rifle', name: 'Sniper Rifle',
+    description: 'Slow, long-range shot that always targets the farthest threat.',
+    tier: WeaponUnlockTier.BLUEPRINT, iconKey: 'upgrade_sniper', blueprintCost: 6,
+  },
+  {
+    id: 'inferno_beam', name: 'Inferno Beam',
+    description: 'A wide beam that scorches and ignites everything it touches.',
+    tier: WeaponUnlockTier.BLUEPRINT, iconKey: 'upgrade_inferno_beam', blueprintCost: 7,
+  },
 ];
 
 export function getWeaponDef(id: string): WeaponDef | undefined {

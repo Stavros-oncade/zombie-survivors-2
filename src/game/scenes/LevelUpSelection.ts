@@ -363,6 +363,7 @@ export class LevelUpSelection extends Scene {
             case 'weapon_speed': return 'upgrade_weapon_speed';
             case 'speed_boost': return 'upgrade_speed';
             case 'health_boost': return 'upgrade_health';
+            case 'lifesteal': return 'upgrade_lifesteal';
             default: return null;
         }
     }

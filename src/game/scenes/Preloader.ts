@@ -145,7 +145,10 @@ export class Preloader extends Scene
             ['upgrade_frostmine', 0x99eeff],
             ['upgrade_ricochet', 0xff66aa],
             ['upgrade_beam', 0xff5577],
-            ['upgrade_voidorb', 0x9b59ff]
+            ['upgrade_voidorb', 0x9b59ff],
+            ['upgrade_lifesteal', 0xff2255],
+            ['upgrade_sniper', 0x336633],
+            ['upgrade_inferno_beam', 0xff5500]
         ].forEach(([k, c]) => ensureIcon(k as string, c as number));
 
         // Blueprint drop placeholder
@@ -175,6 +178,27 @@ export class Preloader extends Scene
             d.fillCircle(rightX, eyeY, 2.2);
             d.generateTexture('sentry_drone', size, size);
             d.destroy();
+        }
+
+        // Sniper Rifle round: an elongated brass tracer (distinct from the round
+        // default plasma bullet) — authored pointing +x (rotation 0) since
+        // SniperRifleWeapon.ts rotates it to the firing angle. Guarded so real
+        // art delivered under this key (content.manifest.json) takes over.
+        if (!this.textures.exists('proj_sniper')) {
+            const w = 64, h = 24;
+            const midY = h / 2;
+            const b = this.add.graphics();
+            // Dark trailing tail (toward the back, -x)
+            b.fillStyle(0x8a5a1e, 0.5);
+            b.fillEllipse(w * 0.28, midY, w * 0.5, h * 0.35);
+            // Brass/gold bullet body
+            b.fillStyle(0xd9a441, 1);
+            b.fillEllipse(w * 0.55, midY, w * 0.5, h * 0.4);
+            // Hot tracer tip (+x)
+            b.fillStyle(0xfff2c2, 1);
+            b.fillTriangle(w * 0.62, midY - h * 0.22, w * 0.62, midY + h * 0.22, w * 0.98, midY);
+            b.generateTexture('proj_sniper', w, h);
+            b.destroy();
         }
 
         // Soft white dot used by all UIEffects particle emitters

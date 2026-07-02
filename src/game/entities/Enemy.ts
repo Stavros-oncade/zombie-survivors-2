@@ -28,6 +28,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     private isDoubleSpeed = false;
     private doubleSpeedGlow: Phaser.GameObjects.Sprite | null = null;
     private doubleSpeedGlowEvent?: Phaser.Time.TimerEvent;
+    // Rare "erratic" variant state (see makeErratic()/updateErraticMovement()).
+    private isErratic = false;
+    private erraticAngle: number | null = null;
+    private erraticTickAccumMs = 0;
+    private erraticStopTicksLeft = 0;
+    private erraticGlow: Phaser.GameObjects.Sprite | null = null;
+    private erraticGlowEvent?: Phaser.Time.TimerEvent;
     private readonly damageFlashMatrix = [
         1, 0, 0, 0, 0,   // Red channel unchanged
         0.3, 0.3, 0.3, 0, 0, // Green channel dimmed (30% of original)
@@ -123,7 +130,15 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     public moveTowardsPlayer(player: Phaser.Physics.Arcade.Sprite): void {
         // Skip movement if stunned
         if (this.isStunned) return;
-        
+
+        // Erratic variant drives its own state machine instead of beelining the
+        // player. Checked AFTER the stun guard above so knockback/stun still
+        // interrupts an erratic enemy exactly like any other.
+        if (this.isErratic) {
+            this.updateErraticMovement(player);
+            return;
+        }
+
         const angle = Phaser.Math.Angle.Between(
             this.x,
             this.y,
@@ -215,6 +230,71 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     /**
+     * Rare "erratic" variant modifier. Orthogonal to base type (mirrors
+     * makeDoubleSpeed() exactly, purple outline instead of red): the enemy
+     * lurches in a direction instead of beelining the player — see
+     * updateErraticMovement(). Idempotent — repeated calls no-op.
+     */
+    public makeErratic(): void {
+        if (this.isErratic) return;
+        this.isErratic = true;
+
+        const color = GameConstants.ENEMIES.ERRATIC_OUTLINE_COLOR;
+        const hadGlow = this.tryAddGlow(color, 4, 0, false, 0.6, 12);
+        if (!hadGlow) {
+            this.erraticGlow = this.scene.add.sprite(this.x, this.y, this.texture.key);
+            this.erraticGlow.setScale(this.scaleX * 1.2, this.scaleY * 1.2);
+            this.erraticGlow.setTint(color).setAlpha(0.5);
+            this.erraticGlow.setBlendMode(Phaser.BlendModes.ADD);
+            this.erraticGlow.setDepth(this.depth - 1);
+            this.erraticGlowEvent = this.scene.time.addEvent({ delay: 16, loop: true, callback: () => {
+                if (this.erraticGlow && this.active) this.erraticGlow.setPosition(this.x, this.y);
+            }});
+        }
+    }
+
+    /**
+     * Erratic movement state machine, driven from moveTowardsPlayer() in place
+     * of the normal chase logic. Runs on a discrete tick (ERRATIC_TICK_MS) via
+     * an ms accumulator rather than every frame, so it reads as a lurch rather
+     * than jitter and stays frame-rate independent. Each tick: 80% continue on
+     * the current heading, 10% turn ~90 degrees, 10% stop for
+     * ERRATIC_STOP_TICKS ticks.
+     */
+    private updateErraticMovement(player: Phaser.Physics.Arcade.Sprite): void {
+        const E = GameConstants.ENEMIES;
+        if (this.erraticAngle === null) {
+            this.erraticAngle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y);
+        }
+
+        this.erraticTickAccumMs += this.scene.game.loop.delta;
+        while (this.erraticTickAccumMs >= E.ERRATIC_TICK_MS) {
+            this.erraticTickAccumMs -= E.ERRATIC_TICK_MS;
+
+            if (this.erraticStopTicksLeft > 0) {
+                this.erraticStopTicksLeft--;
+                continue;
+            }
+
+            const roll = Math.random();
+            if (roll < E.ERRATIC_CONTINUE_CHANCE) {
+                // Continue straight — heading unchanged.
+            } else if (roll < E.ERRATIC_CONTINUE_CHANCE + E.ERRATIC_TURN_CHANCE) {
+                this.erraticAngle += (Math.random() < 0.5 ? 1 : -1) * (Math.PI / 2);
+            } else {
+                this.erraticStopTicksLeft = E.ERRATIC_STOP_TICKS;
+            }
+        }
+
+        if (this.erraticStopTicksLeft > 0) {
+            this.setVelocity(0, 0);
+            return;
+        }
+        this.setVelocityX(Math.cos(this.erraticAngle) * this.speed);
+        this.setVelocityY(Math.sin(this.erraticAngle) * this.speed);
+    }
+
+    /**
      * Adjust current health directly. Clamped to [0, maxHealth].
      */
     public setHealth(value: number): void {
@@ -246,8 +326,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     public takeDamage(amount: number): void {
+        const before = this.health;
         this.health = Math.max(0, this.health - amount);
-        
+        const dealt = before - this.health;
+        if (dealt > 0) this.scene.events.emit('damageDealt', dealt);
+
         // Apply damage flash effect
         if (this.preFX) {
             const fx = this.preFX.addColorMatrix();
@@ -336,6 +419,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             { type: PickupType.DAMAGE, weight: 20 },
             { type: PickupType.EXPERIENCE, weight: 20 },
             { type: PickupType.BOMB, weight: 18 },
+            { type: PickupType.FIRE_RING, weight: 12 },
             { type: PickupType.AIRSTRIKE, weight: 2 } // Rare, powerful pickup
         ];
 
@@ -447,6 +531,16 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
             // would double-remove it mid-iteration and crash that loop.
             if (!fromScene) this.doubleSpeedGlow.destroy();
             this.doubleSpeedGlow = null;
+        }
+
+        // Tear down the erratic fallback halo (same fromScene guard as above).
+        if (this.erraticGlowEvent) {
+            this.erraticGlowEvent.destroy();
+            this.erraticGlowEvent = undefined;
+        }
+        if (this.erraticGlow) {
+            if (!fromScene) this.erraticGlow.destroy();
+            this.erraticGlow = null;
         }
 
         super.destroy(fromScene);
