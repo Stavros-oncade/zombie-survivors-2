@@ -90,6 +90,24 @@ export class EnemySpawnSystem {
     private static readonly EXTRACT_SPAWN_DELAY = 250;
     private static readonly EXTRACT_BATCH = 8;
 
+    // ── Control Zone Code Siege phase (uncapped, omnidirectional/converging
+    // spawning around a FIXED zone — docs/specs/control-zone-code-siege.md §6).
+    // Deliberately NOT reusing Extraction's directional-bias formula: that bias
+    // is asymmetric on purpose (an exit lane), while a fixed-position siege has
+    // no safe lane, so every heading should get equal pressure. Shares the
+    // "freeze the normal state machine" + savedSpawnState restore mechanism
+    // with Extraction (mutually exclusive per mission, so reuse is safe).
+    private siegeActive: boolean = false;
+    private siegeTarget?: { x: number; y: number };
+    private siegeSpawnTimer?: Phaser.Time.TimerEvent;
+    // Sector round-robin cursor: guarantees every heading gets pressure within a
+    // couple of batches rather than relying on chance the way naive uniform
+    // sampling would.
+    private siegeSector = 0;
+    private static readonly SIEGE_SECTORS = 8;
+    private static readonly SIEGE_SPAWN_DELAY = 250;
+    private static readonly SIEGE_BATCH = 8;
+
     private readonly stateConfigs: Record<SpawnState, SpawnStateConfig>;
     private readonly stateNames: SpawnState[];
     private readonly baseStateConfigs: Record<SpawnState, SpawnStateConfig>;
@@ -454,10 +472,14 @@ export class EnemySpawnSystem {
         } else {
             enemy = new Enemy(this.scene, x, y, type);
         }
-        // Rare "double speed" variant — orthogonal to base type, rides on any of
-        // them. Apply at spawn, before any slow, so applySlow's snapshot is correct.
+        // Rare "double speed" / "erratic" variants — orthogonal to base type,
+        // ride on any of them. Mutually exclusive (else if) so their threat-glow
+        // colors (red vs purple) stay visually distinct. Apply at spawn, before
+        // any slow, so applySlow's snapshot is correct.
         if (Math.random() < GameConstants.ENEMIES.DOUBLE_SPEED_CHANCE) {
             enemy.makeDoubleSpeed();
+        } else if (Math.random() < GameConstants.ENEMIES.ERRATIC_CHANCE) {
+            enemy.makeErratic();
         }
         if (this.enemyDamageMult !== 1) enemy.scaleDamage(this.enemyDamageMult);
         this.scene.add.existing(enemy);
@@ -735,11 +757,79 @@ export class EnemySpawnSystem {
         return { x: cx + dx * t, y: cy + dy * t };
     }
 
+    // ── Control Zone Code Siege: uncapped, converging spawning (spec §6) ──
+
+    /**
+     * Begin uncapped siege spawning. Freezes the normal state machine (mirrors
+     * beginExtractionSpawning) and replaces the spawn timer with a fast fixed
+     * loop that bypasses getScaledConfig ceilings. Idempotent — safe to call
+     * every frame while the siege is armed.
+     */
+    public beginSiegeSpawning(target: { x: number; y: number }): void {
+        if (this.siegeActive) return;
+        this.siegeActive = true;
+        this.siegeTarget = target;
+        this.siegeSector = 0;
+        this.savedSpawnState = this.spawnState;
+
+        this.spawnTimer?.destroy();
+        this.stateTimer?.destroy();
+
+        this.siegeSpawnTimer = this.scene.time.addEvent({
+            delay: EnemySpawnSystem.SIEGE_SPAWN_DELAY,
+            loop: true,
+            callback: this.spawnSiegeBatch,
+            callbackScope: this,
+        });
+    }
+
+    /** Restore the saved spawn state and normal timers when the siege ends. */
+    public endSiegeSpawning(): void {
+        if (!this.siegeActive) return;
+        this.siegeActive = false;
+        this.siegeTarget = undefined;
+        this.siegeSpawnTimer?.destroy();
+        this.siegeSpawnTimer = undefined;
+        if (this.savedSpawnState) {
+            this.spawnState = this.savedSpawnState;
+            this.savedSpawnState = undefined;
+        }
+        this.applyStateConfig();
+    }
+
+    private spawnSiegeBatch(): void {
+        const cfg = this.stateConfigs[this.spawnState];
+        for (let i = 0; i < EnemySpawnSystem.SIEGE_BATCH; i++) {
+            const { x, y } = this.getConvergingSpawnPosition();
+            this.createEnemy(x, y, cfg);
+        }
+    }
+
+    /**
+     * Sector round-robin around the FIXED siege zone (not the player — the
+     * player is meant to be near-stationary holding the zone, so anchoring on
+     * them would let drifting shift the "safe" side, §6). Divides 360° into
+     * SIEGE_SECTORS and cycles spawns through sectors in order with jitter, then
+     * projects to the viewport edge via the same ray-cast Extraction uses.
+     */
+    public getConvergingSpawnPosition(zoneCenter?: { x: number; y: number }): { x: number; y: number } {
+        const target = zoneCenter ?? this.siegeTarget;
+        if (!target) return this.getRandomSpawnPosition();
+
+        const sectorWidth = (Math.PI * 2) / EnemySpawnSystem.SIEGE_SECTORS;
+        const jitter = (Math.random() - 0.5) * sectorWidth * 0.8;
+        const theta = this.siegeSector * sectorWidth + jitter;
+        this.siegeSector = (this.siegeSector + 1) % EnemySpawnSystem.SIEGE_SECTORS;
+
+        return this.projectToViewportEdge(target.x, target.y, theta);
+    }
+
     public destroy(): void {
         this.spawnTimer?.destroy();
         this.stateTimer?.destroy();
         this.difficultyTimer?.destroy();
         this.extractionSpawnTimer?.destroy();
+        this.siegeSpawnTimer?.destroy();
     }
 
     // New method to get the formatted wave state text

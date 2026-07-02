@@ -140,7 +140,7 @@ export class SpawnTuner extends Scene {
     makeStateBtn('Toxic Pack', SpawnState.TOXIC_PACK, w/2 + 325, sy);
 
     // Job Board template launcher (debug). Force-generates + accepts an offer from
-    // any of the 12 authored templates (bypassing the normal random 3-offer board)
+    // any of the authored templates (bypassing the normal random 3-offer board)
     // and routes exactly like a real Job Board accept (JobBoard.ts:accept()), so
     // the full reward/mission pipeline is exercised unchanged. Useful for testing
     // template-specific features (e.g. Search & Retrieve's t_supply_run caches)
@@ -168,7 +168,12 @@ export class SpawnTuner extends Scene {
 
     const cols = 4;
     const colXs = [w/2 - 330, w/2 - 110, w/2 + 110, w/2 + 330];
-    const rowYs = [524, 552, 580];
+    // Enough rows for however many templates are authored — this grid must not
+    // silently truncate (or index into `undefined`) as JobTemplates.ts grows.
+    const rowYs = Array.from(
+      { length: Math.ceil(JOB_TEMPLATES.length / cols) },
+      (_, row) => 524 + row * 28
+    );
     JOB_TEMPLATES.forEach((tmpl, i) => {
       const x = colXs[i % cols];
       const y = rowYs[Math.floor(i / cols)];

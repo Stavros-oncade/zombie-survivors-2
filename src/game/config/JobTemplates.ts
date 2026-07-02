@@ -42,6 +42,10 @@ export interface JobTemplate {
   /** Search & Retrieve supply caches (docs/specs/search-and-retrieve-supply-caches.md).
    *  Copied verbatim onto the instantiated Mission, mirrors monoWeapon?. Omitted ⇒ no caches. */
   supplyCache?: Mission['supplyCache'];
+  /** Optional Extraction mission end (docs/specs/extraction-mission-end.md).
+   *  Copied verbatim onto the instantiated Mission, mirrors monoWeapon?/supplyCache?.
+   *  Omitted ⇒ the run ends normally on primary-objective completion. */
+  extraction?: Mission['extraction'];
 }
 
 // ── shared modifier makers ───────────────────────────────────────────────
@@ -244,6 +248,9 @@ export const JOB_TEMPLATES: JobTemplate[] = [
     modifierTable: [modDensity, modElite],
     rewardEmphasis: { horde: 0.6, blueprints: 0.4 },
     monoWeapon: { enabled: true, weaponId: 'tesla_arc' },
+    // Mirrors m_mono_tesla_horde (Missions.ts): Tesla Arc is a crowd-clear tool,
+    // a fair pairing for the uncapped extraction swarm (§5.3 rule).
+    extraction: { enabled: true },
   },
   {
     id: 't_specialist_marksman',
@@ -290,6 +297,27 @@ export const JOB_TEMPLATES: JobTemplate[] = [
     rewardEmphasis: { campaign: 0.5, horde: 0.5 },
     launchKind: JobLaunchKind.CITY_RECLAMATION,
     minTier: 0, // City Reclamation scene shipped — surfaced on the board.
+  },
+  // Control Zone Code Siege (docs/specs/control-zone-code-siege.md §9.3). Rides
+  // entirely on conditionKind/buildCondition like any other kind — no special
+  // opt-in field to add here or copy in JobBoardSystem.instantiate() (the exact
+  // class of gap that left extraction? unreachable via the Job Board, §9.3).
+  {
+    id: 't_override_protocol',
+    titlePool: ['Override Protocol', 'Breach the Grid', 'Signal Override'],
+    flavorPool: ['Crack the relay code at every site, then hold the breach — the horde already knows.'],
+    conditionKind: MissionConditionKind.CONTROL_ZONE_SIEGE,
+    baseDifficulty: 5,
+    buildCondition: (_rng, tier) => ({
+      kind: MissionConditionKind.CONTROL_ZONE_SIEGE,
+      zoneCount: 3,
+      holdSeconds: 40 + tier * 5,
+    }),
+    // TIME_LIMIT is rollable (not guaranteed) rather than a bespoke mission-local
+    // timeout, per the "player never finds all zones" edge case (§7) — compose
+    // with the existing modifier instead of inventing a second mechanism.
+    modifierTable: [modDensity, modElite, modTimeLimit],
+    rewardEmphasis: { blueprints: 0.6, campaign: 0.4 },
   },
 ];
 

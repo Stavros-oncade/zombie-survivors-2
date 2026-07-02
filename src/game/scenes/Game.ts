@@ -332,15 +332,26 @@ export class Game extends Scene {
         // No-op (monoWeaponId stays null) for missions without the opt-in flag.
         this.resolveMonoWeapon();
         this.runId = `run_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
-        this.missionSystem = new MissionSystem(this, this.activeMission);
+        this.missionSystem = new MissionSystem(this, this.activeMission, this.player.x, this.player.y);
         this.events.on('mission_complete', this.handleMissionComplete, this);
+        // Control Zone Code Siege (docs/specs/control-zone-code-siege.md §4): the
+        // "code assembled" banner + per-zone decrypt toast. Always wired (mirrors
+        // mission_complete) — MissionSystem only ever emits these for a
+        // CONTROL_ZONE_SIEGE mission, so this is a no-op for every other kind.
+        this.events.on('control_zone_code_assembled', this.showControlZoneSiegeBanner, this);
+        this.events.on('control_zone_decrypted', this.onControlZoneDecrypted, this);
 
         // Search & Retrieve supply caches (docs/specs/search-and-retrieve-supply-
-        // caches.md). Locked decision: do not combine with Extraction yet — Job
-        // Board generation can't produce this combo (JobTemplate has no extraction?
-        // field), but hand-authored Missions.ts entries could in theory, so guard
-        // defensively rather than constructing both systems.
-        if (this.activeMission.supplyCache?.enabled && this.activeMission.extraction?.enabled) {
+        // caches.md), Extraction, and Control Zone Code Siege are ALL mutually
+        // exclusive with each other (docs/specs/control-zone-code-siege.md §8):
+        // each is "a phase that begins after some condition, with uncapped
+        // spawning," and Siege's hold phase already IS this mission's own siege
+        // finale. Guard defensively at construction/dispatch rather than trusting
+        // authored data never combines them.
+        const isControlZoneSiege = this.activeMission.condition.kind === MissionConditionKind.CONTROL_ZONE_SIEGE;
+        if (isControlZoneSiege && (this.activeMission.supplyCache?.enabled || this.activeMission.extraction?.enabled)) {
+            console.warn(`[Game] Mission '${this.activeMission.id}' is a Control Zone Code Siege but also sets supplyCache/extraction; those are disabled (mutually exclusive).`);
+        } else if (this.activeMission.supplyCache?.enabled && this.activeMission.extraction?.enabled) {
             console.warn(`[Game] Mission '${this.activeMission.id}' sets both supplyCache and extraction; caches disabled (mutually exclusive for now).`);
         } else if (this.activeMission.supplyCache?.enabled) {
             this.supplyCacheSystem = new SupplyCacheSystem(this, this.activeMission, this.player.x, this.player.y);
@@ -872,6 +883,15 @@ export class Game extends Scene {
             }
         }
 
+        // Control Zone Code Siege (docs/specs/control-zone-code-siege.md §6): once
+        // MissionSystem reports the hold zone armed, drive uncapped converging
+        // spawning. beginSiegeSpawning is idempotent (guards internally), so
+        // polling this every frame is safe — it only actually starts once.
+        if (this.missionSystem?.isSiegeArmed() && !this.runEnded) {
+            const siegeZone = this.missionSystem.getSiegeZone();
+            if (siegeZone) this.enemySpawnSystem.beginSiegeSpawning(siegeZone);
+        }
+
         // Advance the optional Extraction phase (dwell timer + zone marker). The
         // dwell completing emits extraction_complete → finishWin (guarded by a done
         // latch + death check so a same-frame death loses, not wins).
@@ -911,9 +931,12 @@ export class Game extends Scene {
         // right after the player moves so the lantern tracks with zero lag.
         this.fogSystem?.update(this.game.loop.delta);
 
-        // Search & Retrieve: suppress weapon fire while the player is channeling a
-        // supply cache (the spec's core vulnerability mechanic).
-        this.weaponSystem.setFireSuppressed(this.supplyCacheSystem?.isSearching() ?? false);
+        // Search & Retrieve / Control Zone Code Siege: suppress weapon fire while
+        // the player is channeling a supply cache or control zone (the shared
+        // "weapon-silent while researching" vulnerability mechanic, §3).
+        this.weaponSystem.setFireSuppressed(
+            (this.supplyCacheSystem?.isSearching() ?? false) || (this.missionSystem?.isChanneling() ?? false)
+        );
 
         // Update weapons (automatic firing)
         this.weaponSystem.update();
@@ -1131,6 +1154,12 @@ export class Game extends Scene {
     // Expose relic system for upgrade/relic effects
     public getRelicSystem(): RelicSystem {
         return this.relicSystem;
+    }
+
+    // Expose the burn system so weapon fire() methods (which only receive a
+    // generic Scene) can ignite enemies, mirroring getRelicSystem()/getEnemiesGroup().
+    public getBurnSystem(): BurnSystem | undefined {
+        return this.burnSystem;
     }
 
     // Registry accessors for toxic gas clouds
@@ -1471,6 +1500,7 @@ export class Game extends Scene {
         // straight through to finishWin (zero behavior change).
         if (
             mission.extraction?.enabled &&
+            mission.condition.kind !== MissionConditionKind.CONTROL_ZONE_SIEGE &&
             !this.extractionSystem?.isActive() &&
             !this.extractionSystem?.isDone()
         ) {
@@ -1541,6 +1571,44 @@ export class Game extends Scene {
         });
     }
 
+    // Control Zone Code Siege (docs/specs/control-zone-code-siege.md §4): small
+    // toast on each fragment decrypted (mirrors onSupplyCacheRetrieved).
+    private onControlZoneDecrypted(payload: { decrypted: number; total: number }): void {
+        const cam = this.cameras.main;
+        const banner = this.add.text(cam.width / 2, cam.height * 0.22,
+            `FRAGMENT DECRYPTED (${payload.decrypted}/${payload.total})`, {
+                fontFamily: 'Arial Black', fontSize: '20px', color: '#66ffcc',
+                stroke: '#000000', strokeThickness: 5, align: 'center',
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
+        this.tweens.add({
+            targets: banner,
+            alpha: 0,
+            delay: 1800,
+            duration: 600,
+            onComplete: () => banner.destroy(),
+        });
+    }
+
+    // Control Zone Code Siege: the "code assembled — override unlocked" banner
+    // the instant the last fragment decrypts (mirrors showExtractionBanner; the
+    // uncapped converging spawn begins the same frame via isSiegeArmed(), §4).
+    private showControlZoneSiegeBanner(): void {
+        const cam = this.cameras.main;
+        const banner = this.add.text(cam.width / 2, cam.height * 0.28,
+            `CODE ASSEMBLED\nOverride unlocked — hold the breach!`, {
+                fontFamily: 'Arial Black', fontSize: '26px', color: '#66ffcc',
+                stroke: '#000000', strokeThickness: 6, align: 'center',
+                wordWrap: { width: Math.min(640, cam.width * 0.85) }
+            }).setOrigin(0.5).setScrollFactor(0).setDepth(2002);
+        this.tweens.add({
+            targets: banner,
+            alpha: 0,
+            delay: 2500,
+            duration: 800,
+            onComplete: () => banner.destroy(),
+        });
+    }
+
     // GameOver with outcome:'win'. Guarded by runEnded so it fires at most once and
     // never races a death (death wins via Player.die's own isDead latch). Reached
     // either directly (non-extraction missions) or via extraction_complete.
@@ -1551,6 +1619,9 @@ export class Game extends Scene {
 
         // Extraction is over (if any) — stop uncapped spawning + drop the marker.
         this.extractionSystem?.destroy();
+        // Control Zone Code Siege (if any) — stop uncapped converging spawning.
+        // No-op if the siege was never armed (endSiegeSpawning guards internally).
+        this.enemySpawnSystem.endSiegeSpawning();
 
         // Long Recon (§5.2): a node WIN does NOT go to GameOver. Capture carry-state,
         // accrue the node reward into pending, then return to the RouteMap — UNLESS
@@ -1781,6 +1852,15 @@ export class Game extends Scene {
                 case PickupType.AIRSTRIKE:
                     this.triggerAirstrike(pickup.x, pickup.y);
                     break;
+                case PickupType.FIRE_RING:
+                    this.createFireRingEffect(pickup.x, pickup.y);
+                    this.showFloatingText(
+                        "FIRE RING!",
+                        pickup.x,
+                        pickup.y - 20,
+                        GameConfig.FIRE_RING.TINT
+                    );
+                    break;
                 case PickupType.FLARE: {
                     // Blow the fog far back for a few seconds (the actual reveal),
                     // then pair a warm cosmetic glow so the area reads as LIT.
@@ -1899,6 +1979,37 @@ export class Game extends Scene {
     // Method to get the pickups group
     public getPickupsGroup(): Phaser.Physics.Arcade.Group {
         return this.pickups;
+    }
+
+    // Fire Ring pickup: a single expanding ring pulse that ignites (no direct
+    // damage) any enemy caught within its growing radius. Each enemy is only
+    // ignited once per pulse (tracked in `ignited`), not every frame the tween runs.
+    private createFireRingEffect(x: number, y: number): void {
+        const cfg = GameConfig.FIRE_RING;
+        const ignited = new Set<Enemy>();
+        const g = this.add.graphics();
+        const state = { r: 0 };
+        this.tweens.add({
+            targets: state,
+            r: cfg.MAX_RADIUS,
+            duration: cfg.DURATION_MS,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => {
+                g.clear();
+                g.lineStyle(6, cfg.TINT, 0.8);
+                g.strokeCircle(x, y, state.r);
+                g.fillStyle(cfg.TINT, 0.15);
+                g.fillCircle(x, y, state.r);
+                (this.enemies.getChildren() as Enemy[]).forEach(enemy => {
+                    if (!enemy.active || ignited.has(enemy)) return;
+                    if (Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) <= state.r) {
+                        ignited.add(enemy);
+                        this.burnSystem?.ignite(enemy, 0);
+                    }
+                });
+            },
+            onComplete: () => g.destroy(),
+        });
     }
 
     // Add a new method to create the explosion effect
@@ -2198,6 +2309,22 @@ export class Game extends Scene {
         this.supplyCacheSystem?.destroy();
         this.gameUI?.destroy();
 
+        // Reset the conditionally-created optional systems to undefined. The
+        // Game scene instance is REUSED across missions (Phaser re-runs
+        // create() on the same instance rather than constructing a new Scene),
+        // and fogSystem/supplyCacheSystem are only reassigned in create() when
+        // the NEXT mission opts in (extractionSystem only inside
+        // beginExtraction()). Without this reset, a mission that doesn't use
+        // one of these (e.g. an easy/fog-off mission right after a fog-on one)
+        // inherits the PREVIOUS mission's now-destroyed instance — still
+        // truthy, so `if (this.fogSystem)` guards pass, but its internal state
+        // (e.g. FogSystem.contributors, cleared in destroy()) is gone. That's
+        // exactly what caused the reported crash: getEffectivePlayerRadius()
+        // force-unwrapping a contributor lookup that returned undefined.
+        this.extractionSystem = undefined;
+        this.fogSystem = undefined;
+        this.supplyCacheSystem = undefined;
+
         // Remove only this game's custom event listeners. We must NOT call
         // this.events.removeAllListeners() here: this.events is the scene's
         // *system* emitter, which also carries Phaser's internal plugin
@@ -2217,6 +2344,8 @@ export class Game extends Scene {
         'extraction_started',
         'extraction_complete',
         'supply_cache_retrieved',
+        'control_zone_code_assembled',
+        'control_zone_decrypted',
         'enemyKilled',
         'enemyKilledClassified',
         'player_level_up',

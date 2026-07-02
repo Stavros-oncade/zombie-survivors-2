@@ -13,6 +13,7 @@ export enum MissionConditionKind {
   FLAWLESS_WINDOW     = 'flawless_window',       // #7
   COLLECT_DROPS       = 'collect_drops',         // #8
   PURGE_TYPE          = 'purge_type',            // #9 (board clear / extermination)
+  CONTROL_ZONE_SIEGE  = 'control_zone_siege',    // #10 (docs/specs/control-zone-code-siege.md)
 }
 
 /** A point in world space (world is 2048x1536; see GameConfig.WORLD). */
@@ -115,6 +116,24 @@ export interface PurgeTypeCondition extends BaseCondition {
   requireBoardClearAtFinish: boolean;
 }
 
+/**
+ * Control Zone Code Siege (docs/specs/control-zone-code-siege.md). Unlike every
+ * other condition, this IS the win condition end-to-end (§9.2 locked decision) —
+ * evaluated inside MissionSystem, not layered on via a Mission-level opt-in flag
+ * the way extraction?/supplyCache? are. Visit `zoneCount` small control zones to
+ * channel/decrypt a code fragment at each; once all are decrypted, a larger hold
+ * zone arms and uncapped omnidirectional spawning begins — hold it for
+ * `holdSeconds` (continuous, reset-on-leave) to win.
+ */
+export interface ControlZoneSiegeCondition extends BaseCondition {
+  kind: MissionConditionKind.CONTROL_ZONE_SIEGE;
+  zoneCount?: number;        // control zones to place; default 3, clamp 2-4
+  zoneRadius?: number;       // per-zone channel trigger radius (px); default 48
+  decryptSeconds?: number;   // per-zone channel duration; default 5
+  holdZoneRadius?: number;   // final hold-zone radius (px); default 220
+  holdSeconds?: number;      // continuous siege dwell required; default 40
+}
+
 export type MissionCondition =
   | KillCountCondition
   | SurviveTimeCondition
@@ -124,7 +143,8 @@ export type MissionCondition =
   | SlayBossCondition
   | FlawlessWindowCondition
   | CollectDropsCondition
-  | PurgeTypeCondition;
+  | PurgeTypeCondition
+  | ControlZoneSiegeCondition;
 
 /** Static, designer-authored mission definition. */
 export interface Mission {

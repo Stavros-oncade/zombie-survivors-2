@@ -263,7 +263,7 @@ export class JobBoardSystem {
     const mission: Mission = {
       id: missionId,
       name: pickTitle(rng, tmpl),
-      description: this.describeCondition(condition),
+      description: this.describeCondition(condition) + (tmpl.extraction?.enabled ? ' Then extract.' : ''),
       condition,
       // Per §2: the board supersedes Mission.reward; leave it undefined so no
       // double-pay can happen via the legacy GameOver path.
@@ -273,6 +273,7 @@ export class JobBoardSystem {
       // onto the instantiated mission so the run forces that weapon (§7.2).
       monoWeapon: tmpl.monoWeapon,
       supplyCache: tmpl.supplyCache,
+      extraction: tmpl.extraction,
     };
 
     const difficulty = this.computeDifficulty(mission, modifiers);
@@ -319,6 +320,10 @@ export class JobBoardSystem {
 
   private static estimateFromCondition(c: MissionCondition): number {
     switch (c.kind) {
+      // The closest thing this game has to a boss fight that isn't a boss
+      // (docs/specs/control-zone-code-siege.md "The hook") — top-tier anchor,
+      // matching SLAY_BOSS.
+      case MissionConditionKind.CONTROL_ZONE_SIEGE: return 5;
       case MissionConditionKind.SLAY_BOSS: return 5;
       case MissionConditionKind.FLAWLESS_WINDOW: return 4;
       case MissionConditionKind.PURGE_TYPE: return 4;
@@ -344,6 +349,9 @@ export class JobBoardSystem {
       case MissionConditionKind.FLAWLESS_WINDOW: raw = c.seconds / 60; break;
       case MissionConditionKind.HOLD_ZONE: raw = c.holdSeconds / 30; break;
       case MissionConditionKind.PURGE_TYPE: raw = c.target / 20; break;
+      // Same per-second scalar as HOLD_ZONE — the siege dwell is this
+      // condition's one dominant tunable (zoneCount just paces getting there).
+      case MissionConditionKind.CONTROL_ZONE_SIEGE: raw = (c.holdSeconds ?? 40) / 30; break;
       default: raw = 1;
     }
     return Math.max(0.8, Math.min(1.6, raw));
@@ -433,6 +441,8 @@ export class JobBoardSystem {
       case MissionConditionKind.FLAWLESS_WINDOW: return `Survive ${c.seconds}s without being hit.`;
       case MissionConditionKind.COLLECT_DROPS: return `Collect ${c.target} pickups.`;
       case MissionConditionKind.PURGE_TYPE: return `Exterminate ${c.target} ${c.enemyType} and leave none.`;
+      case MissionConditionKind.CONTROL_ZONE_SIEGE:
+        return `Decrypt ${c.zoneCount ?? 3} control zones, then hold the breach for ${c.holdSeconds ?? 40}s.`;
       default: return 'Complete the objective.';
     }
   }

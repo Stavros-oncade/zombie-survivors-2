@@ -159,6 +159,23 @@ export const MISSIONS: Mission[] = [
     // so it can break an elite wall — the fair pairing for KILL_ELITES (§5.3 rule).
     monoWeapon: { enabled: true, weaponId: 'piercing_shot' },
   },
+  {
+    id: 'm_override_protocol',
+    name: 'Override Protocol',
+    description: 'Decrypt 3 control zones scattered around the arena, then hold the breach for 40 seconds against an uncapped horde.',
+    difficulty: 5,
+    // Control Zone Code Siege (docs/specs/control-zone-code-siege.md). This IS
+    // the win condition end-to-end (§9.2 locked decision) — no extraction?/
+    // supplyCache? flag, and mutually exclusive with both (Game.ts guards this
+    // defensively, §8). The hold zone + control zones are placed at RUNTIME
+    // relative to the player's spawn point (mirrors ExtractionSystem.placeZone),
+    // so — like extraction-enabled missions above — there is no fixed
+    // coordinate to author a matching `lights` entry against; fog defaults on
+    // via the normal difficulty rule (this mission is well above the
+    // easy-opt-out threshold) instead of an authored override.
+    condition: { kind: MissionConditionKind.CONTROL_ZONE_SIEGE, zoneCount: 3, holdSeconds: 40 },
+    reward: { blueprintPoints: 5 },
+  },
 ];
 
 export const DEFAULT_MISSION_ID = 'm_kill_200';
